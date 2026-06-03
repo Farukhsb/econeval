@@ -1,0 +1,17 @@
+project: basic-model
+version: 1
+
+invariants:
+  - name: elasticity_must_be_negative
+    expression: model.elasticity < 0
+
+stress_tests:
+  - name: 2008_crisis
+    dataset: data/2008_crisis.csv
+    metric: rmse
+    threshold: 0.2
+
+fairness:
+  enabled: false
+  metrics: []
+
