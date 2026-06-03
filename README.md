@@ -340,9 +340,9 @@ When you are ready to publish a new version:
 5. confirm the release artifact uploaded from Actions
 6. confirm the wheel and sdist were published to PyPI
 
-To publish to PyPI through GitHub Actions, enable PyPI trusted publishing for this
-repository and then publish the GitHub Release. The release workflow will build the
-distribution and upload it automatically.
+To publish to PyPI through GitHub Actions, add a `PYPI_TOKEN` repository secret with
+an upload token for the `econeval` project, then publish the GitHub Release. The
+release workflow will build the distribution and upload it automatically.
 
 ## Changelog
 
