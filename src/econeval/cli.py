@@ -10,6 +10,7 @@ from pathlib import Path
 from .config import load_config
 from .invariants import run_invariant_suite, suite_passed
 from .reporting import build_json_report, write_json_report
+from .scenarios import run_stress_suite, suite_passed as stress_suite_passed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,15 +58,15 @@ def run_cli(argv: list[str] | None = None) -> int:
     model = model_class()
 
     results = run_invariant_suite(model, config.invariants)
-    report = build_json_report(config, results)
+    scenario_results = run_stress_suite(model, config.stress_tests, base_path=Path(args.config).parent)
+    report = build_json_report(config, results, scenario_results)
     write_json_report(args.report, report)
 
     status = report["summary"]["status"]
-    print(f"EconEval: {status} ({report['summary']['passed']}/{report['summary']['total']} invariants passed)")
+    print(f"EconEval: {status} ({report['summary']['passed']}/{report['summary']['total']} checks passed)")
 
-    return 0 if suite_passed(results) else 1
+    return 0 if suite_passed(results) and stress_suite_passed(scenario_results) else 1
 
 
 def main(argv: list[str] | None = None) -> int:
     return run_cli(argv)
-

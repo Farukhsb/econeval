@@ -3,6 +3,7 @@ from pathlib import Path
 from econeval.config import EconEvalConfig, FairnessConfig, InvariantRule
 from econeval.invariants import InvariantResult
 from econeval.reporting import build_json_report, write_json_report
+from econeval.scenarios import ScenarioResult
 
 
 def test_build_json_report_summarizes_results() -> None:
@@ -23,6 +24,30 @@ def test_build_json_report_summarizes_results() -> None:
     assert report["summary"]["passed"] == 1
     assert report["summary"]["failed"] == 1
     assert report["summary"]["status"] == "fail"
+    assert report["stress_tests"] == []
+
+
+def test_build_json_report_counts_scenario_results() -> None:
+    config = EconEvalConfig(project="demo-model")
+    results = [InvariantResult(name="elasticity", expression="model.elasticity < 0", passed=True)]
+    scenarios = [
+        ScenarioResult(
+            name="stagflation_shock",
+            dataset="data/stagflation.csv",
+            metric="mape",
+            threshold=0.1,
+            value=0.0,
+            passed=True,
+        )
+    ]
+
+    report = build_json_report(config, results, scenarios)
+
+    assert report["summary"]["total"] == 2
+    assert report["summary"]["passed"] == 2
+    assert report["summary"]["failed"] == 0
+    assert report["summary"]["status"] == "pass"
+    assert len(report["stress_tests"]) == 1
 
 
 def test_write_json_report_creates_parent_directories(tmp_path: Path) -> None:
@@ -32,4 +57,3 @@ def test_write_json_report_creates_parent_directories(tmp_path: Path) -> None:
 
     assert report_path.exists()
     assert report_path.read_text(encoding="utf-8").strip() == '{\n  "hello": "world"\n}'
-

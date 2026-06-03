@@ -1,4 +1,4 @@
-project: basic-model
+project: broken-model
 version: 1
 
 invariants:
@@ -14,3 +14,4 @@ stress_tests:
 fairness:
   enabled: false
   metrics: []
+
