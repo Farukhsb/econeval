@@ -8,10 +8,12 @@ import json
 import os
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
-from .config import load_config
+from .config import EconEvalConfig, load_config
 from .errors import ExecutionIssue
 from .invariants import run_invariant_suite, suite_passed
 from .reporting import (
@@ -23,6 +25,7 @@ from .reporting import (
     write_json_report,
     write_junit_report,
     write_markdown_report,
+    write_pdf_report,
 )
 from .scenarios import (
     drift_suite_passed,
@@ -38,6 +41,8 @@ from .scenarios import (
 from .scenarios import (
     suite_passed as stress_suite_passed,
 )
+
+Logger = Callable[[str], None]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=("json", "junit", "markdown", "html", "dashboard"),
+        choices=("json", "junit", "markdown", "html", "dashboard", "pdf"),
         default="json",
         help="Report format to write.",
     )
@@ -92,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def load_model_class(model_path: str | Path, class_name: str):
+def load_model_class(model_path: str | Path, class_name: str) -> type[Any]:
     """Load a model class from a Python file path."""
 
     module_path = Path(model_path).resolve()
@@ -139,13 +144,11 @@ def run_cli(argv: list[str] | None = None) -> int:
     return exit_code
 
 
-def _placeholder_config():
-    from .config import EconEvalConfig
-
+def _placeholder_config() -> EconEvalConfig:
     return EconEvalConfig(project="unavailable")
 
 
-def _run_checks_once(args, log):
+def _run_checks_once(args: argparse.Namespace, log: Logger) -> tuple[dict[str, Any], int]:
     issues: list[ExecutionIssue] = []
     config = None
 
@@ -277,7 +280,7 @@ def _run_checks_once(args, log):
     return report, status
 
 
-def _run_watch_mode(args, log) -> int:
+def _run_watch_mode(args: argparse.Namespace, log: Logger) -> int:
     watched_paths = _watch_paths(args)
     watched_state = _snapshot_watch_state(watched_paths)
 
@@ -301,7 +304,7 @@ def _run_watch_mode(args, log) -> int:
         _wait_for_watch_change(watched_paths, watched_state, args.watch_interval)
 
 
-def _watch_paths(args) -> list[Path]:
+def _watch_paths(args: argparse.Namespace) -> list[Path]:
     return [Path(args.config).resolve(), Path(args.model).resolve()]
 
 
@@ -334,18 +337,19 @@ def _wait_for_watch_change(
         time.sleep(max(interval, 0.1))
 
 
-def _write_report(report_format: str, path: str | Path, report: dict[str, object]) -> None:
+def _write_report(report_format: str, path: str | Path, report: dict[str, Any]) -> None:
     writers = {
         "json": write_json_report,
         "junit": write_junit_report,
         "markdown": write_markdown_report,
         "html": write_html_report,
         "dashboard": write_dashboard_report,
+        "pdf": write_pdf_report,
     }
     writers[report_format](path, report)
 
 
-def _write_step_summary(report: dict[str, object]) -> None:
+def _write_step_summary(report: dict[str, Any]) -> None:
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary_path:
         return
@@ -353,14 +357,14 @@ def _write_step_summary(report: dict[str, object]) -> None:
     write_github_step_summary(summary_path, report)
 
 
-def _load_baseline_report(path: str | Path) -> dict[str, object]:
+def _load_baseline_report(path: str | Path) -> dict[str, Any]:
     report_path = Path(path).resolve()
     if not report_path.exists():
         raise FileNotFoundError(f"baseline report not found: {report_path}")
     return json.loads(report_path.read_text(encoding="utf-8"))
 
 
-def _build_logger(verbose: bool, quiet: bool):
+def _build_logger(verbose: bool, quiet: bool) -> Logger:
     if quiet:
         return lambda message: None
     if not verbose:
@@ -368,7 +372,7 @@ def _build_logger(verbose: bool, quiet: bool):
     return lambda message: print(f"[econeval] {message}")
 
 
-def _log_stage_summary(log, stage: str, results, elapsed: float) -> None:
+def _log_stage_summary(log: Logger, stage: str, results: list[Any], elapsed: float) -> None:
     if not results:
         log(f"{stage}: no checks configured ({elapsed:.2f}s)")
         return

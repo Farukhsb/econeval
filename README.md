@@ -1,11 +1,14 @@
 # EconEval
 
+pytest for economic logic.
+
 <p align="left">
   <img src="assets/logo.svg" alt="EconEval logo" width="120" />
 </p>
 
 [![PyPI version](https://img.shields.io/pypi/v/econeval.svg)](https://pypi.org/project/econeval/)
 [![CI](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml/badge.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-80%25%2B-2ea44f.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
 [![Python 3.10-3.11](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-v0.3.2-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.3.2)
 
@@ -212,6 +215,14 @@ econeval --config examples/basic_model/econeval.yml --model examples/basic_model
 
 If you want a quick sanity check, run the broken example next and confirm it fails.
 
+## Benchmarks
+
+To compare the large-array expression backends, run:
+
+```bash
+python benchmarks/numexpr_benchmark.py --size 100000 --iterations 20
+```
+
 ## How To Use It
 
 Create a config file that lists the checks you want to enforce, then point EconEval at a Python model class.
@@ -239,6 +250,26 @@ To write a text report instead:
 ```bash
 econeval --config examples/advanced_model/econeval.yml --model examples/advanced_model/model.py --class AdvancedModel --report econeval-report.md --format markdown
 econeval --config examples/advanced_model/econeval.yml --model examples/advanced_model/model.py --class AdvancedModel --report econeval-report.html --format html
+```
+
+To write a PDF report, install the optional extra first:
+
+```bash
+pip install econeval[pdf]
+econeval --config examples/advanced_model/econeval.yml --model examples/advanced_model/model.py --class AdvancedModel --report econeval-report.pdf --format pdf
+```
+
+If you need a custom economic check kind, register a handler in Python and then
+use that `kind` in your config:
+
+```python
+from econeval.config import EconomicCheck
+from econeval.scenarios import register_economic_check_handler
+
+def run_custom_check(model, check):
+    return check.name, check.kind
+
+register_economic_check_handler("custom_policy_check", run_custom_check)
 ```
 
 ## GitHub Action
@@ -329,7 +360,7 @@ That design keeps the syntax simple for users while avoiding raw `eval()` and ot
 - `examples/broken_model` shows a model and dataset that fail the checks.
 - `examples/drift_model` focuses on drift validation, including PSI, trend drift, and regression drift over time.
 - `examples/fairness_model` focuses on fairness checks and a simple stress test.
-- `examples/policy_model` is a minimal policy-focused fairness example.
+- `examples/policy_model` is a compact policy example with fairness, invariants, and a monotonicity check.
 - `examples/advanced_model` shows accounting identities, monotonicity, convergence, grid sweeps, synthetic shocks, and GitHub-friendly report output.
 - `--baseline-report` compares a current report against a prior JSON run and highlights regressions, improvements, and new or removed checks.
 - `examples/demo_notebook.ipynb` is a short walkthrough you can open in Jupyter or VS Code.

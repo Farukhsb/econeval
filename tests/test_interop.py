@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 from econeval.config import EconomicCheck, StressTest
@@ -47,6 +50,28 @@ class StatsmodelsLikeModel:
         else:
             row = rows[0]
             values = [float(value) for value in row]
+        return [sum(values)]
+
+
+class StatsmodelsFrameLikeModel:
+    exog_names = ("const", "shock", "demand")
+
+    def predict(self, rows: list[list[float]] | object) -> list[float]:
+        if hasattr(rows, "iloc"):
+            row = rows.iloc[0]
+            values = [float(value) for value in row.tolist()]
+        else:
+            row = rows[0]
+            values = [float(value) for value in row]
+        return [sum(values)]
+
+
+class PandasFrameLikeModel:
+    feature_names_in_ = ("shock", "demand")
+
+    def predict(self, rows: object) -> list[float]:
+        row = rows.iloc[0]
+        values = [float(value) for value in row.tolist()]
         return [sum(values)]
 
 
@@ -104,3 +129,39 @@ def test_statsmodels_style_estimators_receive_intercept_and_features() -> None:
     runtime = resolve_model_runtime(model)
 
     assert runtime.predict({"shock": 0.5}) == pytest.approx(1.5)
+
+
+def test_statsmodels_style_estimators_receive_tabular_row_shape() -> None:
+    model = StatsmodelsFrameLikeModel()
+    runtime = resolve_model_runtime(model)
+
+    assert runtime.predict({"shock": 0.5, "demand": 1.5}) == pytest.approx(3.0)
+
+
+def test_pandas_dataframes_are_used_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    created: dict[str, object] = {}
+
+    class FakeDataFrame:
+        def __init__(self, rows: list[list[float]], columns: list[str]) -> None:
+            created["rows"] = rows
+            created["columns"] = columns
+            self._rows = rows
+            self.columns = columns
+
+        @property
+        def iloc(self) -> FakeDataFrame:
+            return self
+
+        def __getitem__(self, index: int) -> FakeDataFrame:
+            return self
+
+        def tolist(self) -> list[float]:
+            return list(self._rows[0])
+
+    monkeypatch.setitem(sys.modules, "pandas", types.SimpleNamespace(DataFrame=FakeDataFrame))
+
+    model = PandasFrameLikeModel()
+    runtime = resolve_model_runtime(model)
+
+    assert runtime.predict({"shock": 0.5, "demand": 1.5}) == pytest.approx(2.0)
+    assert created["columns"] == ["shock", "demand"]

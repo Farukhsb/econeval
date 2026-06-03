@@ -6,10 +6,13 @@ import pytest
 from econeval.config import EconomicCheck, StressTest
 from econeval.invariants import evaluate_expression
 from econeval.scenarios import (
+    EconomicCheckResult,
     economic_suite_passed,
+    register_economic_check_handler,
     run_economic_check,
     run_fairness_checks,
     run_stress_test,
+    unregister_economic_check_handler,
 )
 
 
@@ -114,6 +117,26 @@ def test_convergence_check_reports_worst_state() -> None:
     assert result.worst_state == {"supply": 10.0}
 
 
+class ScipyOptimizeResultLike:
+    success = True
+    status = 0
+    message = "Optimization terminated successfully."
+
+
+def test_scipy_style_optimize_result_is_recognized() -> None:
+    result = run_economic_check(
+        ScipyOptimizeResultLike(),
+        EconomicCheck(
+            name="optimizer_converges",
+            kind="convergence",
+            method="solve",
+            initial_states=[{}],
+        ),
+    )
+
+    assert result.passed is True
+
+
 def test_boundary_condition_check_samples_initial_states() -> None:
     model = AdvancedModel()
     check = EconomicCheck(
@@ -186,6 +209,41 @@ def test_scan_check_detects_elasticity_sign() -> None:
 
     assert result.passed is True
     assert result.observations == pytest.approx([-0.2, -0.2, -0.2])
+
+
+def test_custom_economic_check_handler_can_be_registered() -> None:
+    model = AdvancedModel()
+
+    def _custom_handler(model: AdvancedModel, check: EconomicCheck) -> EconomicCheckResult:
+        bonus = float((check.model_extra or {}).get("bonus", 0.0))
+        return EconomicCheckResult(
+            name=check.name,
+            kind=check.kind,
+            passed=True,
+            value=bonus,
+            detail="custom handler",
+        )
+
+    register_economic_check_handler(
+        "custom_policy_check",
+        _custom_handler,
+    )
+
+    try:
+        check = EconomicCheck(
+            name="custom_policy_check",
+            kind="custom_policy_check",
+            bonus=0.25,
+        )
+
+        result = run_economic_check(model, check)
+
+        assert result.passed is True
+        assert result.kind == "custom_policy_check"
+        assert result.value == 0.25
+        assert result.detail == "custom handler"
+    finally:
+        unregister_economic_check_handler("custom_policy_check")
 
 
 def test_synthetic_stress_test_passes() -> None:
