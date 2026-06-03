@@ -96,6 +96,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="Seconds to wait between watch polls.",
     )
+    parser.add_argument(
+        "--blame",
+        action="store_true",
+        help="Attempt to git blame failed invariant lines.",
+    )
     return parser
 
 
@@ -233,7 +238,11 @@ def _run_checks_once(args: argparse.Namespace, log: Logger) -> tuple[dict[str, A
 
     log("running invariants")
     started_at = perf_counter()
-    results = run_invariant_suite(model, config.invariants) if model is not None else []
+    results = (
+        run_invariant_suite(model, config.invariants, trace_failures=args.blame)
+        if model is not None
+        else []
+    )
     _log_stage_summary(log, "invariants", results, perf_counter() - started_at)
     log("running economic checks")
     started_at = perf_counter()

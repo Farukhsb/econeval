@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .config import InvariantRule
+from .traceability import collect_invariant_blame
 
 _ALLOWED_NODES = (
     ast.Expression,
@@ -53,6 +54,9 @@ class InvariantResult:
     name: str
     expression: str
     passed: bool
+    value: Any | None = None
+    trace: str | None = None
+    blame: list[dict[str, Any]] | None = None
     detail: str | None = None
     error: str | None = None
     error_type: str | None = None
@@ -78,7 +82,12 @@ def evaluate_expression(
     return _evaluate_python_ast(expression, context, tree)
 
 
-def run_invariant_suite(model: Any, rules: list[InvariantRule]) -> list[InvariantResult]:
+def run_invariant_suite(
+    model: Any,
+    rules: list[InvariantRule],
+    *,
+    trace_failures: bool = False,
+) -> list[InvariantResult]:
     """Run a list of invariant rules against a model object."""
 
     context = {"model": model}
@@ -93,6 +102,13 @@ def run_invariant_suite(model: Any, rules: list[InvariantRule]) -> list[Invarian
                     name=rule.name,
                     expression=rule.expression,
                     passed=passed,
+                    value=value,
+                    trace=None if passed else _describe_failure_trace(rule, context, value),
+                    blame=(
+                        None
+                        if passed or not trace_failures
+                        else collect_invariant_blame(model, rule)
+                    ),
                     detail=None if passed else _describe_failed_expression(rule, context),
                 )
             )
@@ -154,6 +170,51 @@ def _describe_failed_expression(rule: InvariantRule, context: dict[str, Any]) ->
         return _format_rule_error(rule, "expression evaluated to False")
 
     return _format_rule_error(rule, f"expression evaluated to False (value={value!r})")
+
+
+def _describe_failure_trace(
+    rule: InvariantRule,
+    context: dict[str, Any],
+    value: Any,
+) -> str:
+    try:
+        tree = _validate_expression(rule.expression)
+    except SyntaxError:
+        return _format_rule_error(rule, f"failed with value={value!r}")
+
+    detail = _describe_compare_trace(tree.body, context, value)
+    if detail is not None:
+        return _format_rule_error(rule, detail)
+
+    return _format_rule_error(rule, f"expression value={value!r} (failed)")
+
+
+def _describe_compare_trace(
+    node: ast.AST,
+    context: dict[str, Any],
+    value: Any,
+) -> str | None:
+    if not isinstance(node, ast.Compare):
+        return None
+
+    left_node = node.left
+    left_text = _safe_unparse(left_node)
+    left_value = _evaluate_node(left_node, context)
+
+    for operator, comparator in zip(node.ops, node.comparators, strict=True):
+        right_text = _safe_unparse(comparator)
+        right_value = _evaluate_node(comparator, context)
+        if not _compare(operator, left_value, right_value):
+            symbol = _operator_symbol(operator)
+            return (
+                f"{left_text}={left_value!r} (failed); "
+                f"expected {symbol} {right_text} (got {right_value!r}); "
+                f"expression value={value!r}"
+            )
+        left_text = right_text
+        left_value = right_value
+
+    return None
 
 
 def _describe_compare_failure(node: ast.AST, context: dict[str, Any]) -> str | None:

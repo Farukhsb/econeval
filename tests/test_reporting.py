@@ -35,7 +35,13 @@ def test_build_json_report_summarizes_results() -> None:
     )
     results = [
         InvariantResult(name="elasticity", expression="model.elasticity < 0", passed=True),
-        InvariantResult(name="supply", expression="model.supply >= 0", passed=False),
+        InvariantResult(
+            name="supply",
+            expression="model.supply >= 0",
+            passed=False,
+            value=-1.0,
+            trace="model.supply=-1.0 (failed); expected >= 0 (got 0.0); expression value=False",
+        ),
     ]
 
     report = build_json_report(config, results)
@@ -47,6 +53,8 @@ def test_build_json_report_summarizes_results() -> None:
     assert report["summary"]["status"] == "fail"
     assert report["stress_tests"] == []
     assert report["economic_checks"] == []
+    assert report["invariants"][1]["value"] == -1.0
+    assert "model.supply" in report["invariants"][1]["trace"]
 
 
 def test_build_json_report_counts_scenario_results() -> None:
@@ -385,6 +393,78 @@ def test_write_markdown_report_includes_worst_state(tmp_path: Path) -> None:
     assert "worst initial state" in text
     assert "worst observed value" in text
     assert "10.0" in text
+
+
+def test_write_markdown_report_includes_invariant_trace(tmp_path: Path) -> None:
+    report_path = tmp_path / "artifacts" / "econeval-report.md"
+    report = build_json_report(
+        EconEvalConfig(project="demo-model"),
+        [
+            InvariantResult(
+                name="elasticity",
+                expression="model.elasticity < 0",
+                passed=False,
+                value=0.25,
+                trace="model.elasticity=0.25 (failed); expected < 0 (got 0)",
+                blame=[
+                    {
+                        "path": "model.py",
+                        "line": 3,
+                        "commit": "abc123def456",
+                        "author": "Ada Lovelace",
+                        "summary": "Adjust elasticity default",
+                        "pull_request": 7,
+                    }
+                ],
+                detail="model.elasticity evaluated to 0.25; expected < 0",
+            )
+        ],
+    )
+
+    write_markdown_report(report_path, report)
+
+    text = report_path.read_text(encoding="utf-8")
+    assert "trace" in text.lower()
+    assert "model.elasticity=0.25" in text
+    assert "model.py:3" in text
+    assert "abc123def456" in text
+    assert "PR #7" in text
+
+
+def test_write_html_report_includes_invariant_trace(tmp_path: Path) -> None:
+    report_path = tmp_path / "artifacts" / "econeval-report.html"
+    report = build_json_report(
+        EconEvalConfig(project="demo-model"),
+        [
+            InvariantResult(
+                name="elasticity",
+                expression="model.elasticity < 0",
+                passed=False,
+                value=0.25,
+                trace="model.elasticity=0.25 (failed); expected < 0 (got 0)",
+                blame=[
+                    {
+                        "path": "model.py",
+                        "line": 3,
+                        "commit": "abc123def456",
+                        "author": "Ada Lovelace",
+                        "summary": "Adjust elasticity default",
+                        "pull_request": 7,
+                    }
+                ],
+                detail="model.elasticity evaluated to 0.25; expected < 0",
+            )
+        ],
+    )
+
+    write_html_report(report_path, report)
+
+    text = report_path.read_text(encoding="utf-8")
+    assert "trace" in text.lower()
+    assert "model.elasticity=0.25" in text
+    assert "model.py:3" in text
+    assert "abc123def456" in text
+    assert "PR #7" in text
 
 
 def test_write_markdown_report_includes_fairness_severity(tmp_path: Path) -> None:

@@ -21,6 +21,7 @@ from .scenarios import (
     FairnessResult,
     ScenarioResult,
 )
+from .traceability import format_blame_entries
 
 _REPORT_SECTIONS = (
     ("invariants", "Invariant"),
@@ -826,10 +827,12 @@ def _item_details(section: str, item: Mapping[str, Any]) -> list[tuple[str, Any]
         "worst_sample": "worst sample",
         "mode": "drift mode",
         "backend": "drift backend",
+        "blame": "blame",
     }
     keys = (
         "stage",
         "message",
+        "trace",
         "value",
         "threshold",
         "tolerance",
@@ -865,14 +868,18 @@ def _item_details(section: str, item: Mapping[str, Any]) -> list[tuple[str, Any]
         "shock_type",
         "direction",
         "detail",
+        "blame",
         "error_type",
         "error",
     )
-    details = [
-        (labels.get(key, key), item[key])
-        for key in keys
-        if key in item and item.get(key) not in (None, "", [])
-    ]
+    details = []
+    for key in keys:
+        value = item.get(key)
+        if value in (None, "", []):
+            continue
+        if key == "blame" and isinstance(value, list):
+            value = format_blame_entries(value)
+        details.append((labels.get(key, key), value))
     if item.get("observations"):
         details.append(("observations", item["observations"]))
     return details
@@ -1068,7 +1075,10 @@ def _failure_details(item: Mapping[str, Any]) -> str:
     parts: list[str] = []
     for key in (
         "severity",
+        "trace",
+        "blame",
         "detail",
+        "value",
         "error",
         "error_type",
         "visual",
@@ -1089,6 +1099,8 @@ def _failure_details(item: Mapping[str, Any]) -> str:
         value = item.get(key)
         if value in (None, "", []):
             continue
+        if key == "blame" and isinstance(value, list):
+            value = format_blame_entries(value)
         parts.append(f"{key}={value}")
     return ", ".join(parts)
 
