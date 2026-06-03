@@ -12,6 +12,14 @@ Releases follow semantic versioning:
 
 - No unreleased changes yet.
 
+## v0.4.0
+
+- Added a safer numeric expression path with static validation and clearer failures.
+- Improved HTML reporting with collapsible sections and richer output.
+- Added a baseline report comparison flow for release validation.
+- Added PDF output, benchmark tooling, and extension hooks for custom checks.
+- Expanded examples, docs, type hints, and repo hygiene metadata.
+
 ## v0.3.2
 
 - Added PSI-based drift detection and a worked drift example.

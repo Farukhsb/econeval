@@ -10,13 +10,13 @@ pytest for economic logic.
 [![CI](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml/badge.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-80%25%2B-2ea44f.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
 [![Python 3.10-3.11](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.2-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.3.2)
+[![Version](https://img.shields.io/badge/version-v0.4.0-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.4.0)
 
 EconEval is a small open-source framework for checking economic and policy models in CI.
 
 It catches problems unit tests often miss: broken rules, drift after data changes, and outputs that stop making economic sense.
 
-Latest release: [`v0.3.2`](https://github.com/Farukhsb/econeval/releases/tag/v0.3.2)
+Latest release: [`v0.4.0`](https://github.com/Farukhsb/econeval/releases/tag/v0.4.0)
 
 ## What It Does
 
@@ -196,10 +196,10 @@ pip install econeval
 If you want the exact release state, install from the tagged GitHub release:
 
 ```bash
-pip install git+https://github.com/Farukhsb/econeval.git@v0.3.2
+pip install git+https://github.com/Farukhsb/econeval.git@v0.4.0
 ```
 
-If you want to inspect the release artifacts first, start from the `v0.3.2` tag or the GitHub release page.
+If you want to inspect the release artifacts first, start from the `v0.4.0` tag or the GitHub release page.
 
 ## Getting Started
 
@@ -398,7 +398,7 @@ When you are ready to publish a new version:
 
 1. run the test suite locally
 2. update the package version if needed
-3. tag the release, for example `v0.3.2`
+3. tag the release, for example `v0.4.0`
 4. publish the GitHub Release so the release workflow runs
 5. confirm the release artifact uploaded from Actions
 6. confirm the wheel and sdist were published to PyPI
