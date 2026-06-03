@@ -197,7 +197,7 @@ class DriftTest(BaseModel):
     dataset: str = Field(min_length=1)
     feature: str = Field(min_length=1)
     threshold: float = Field(gt=0)
-    statistic: Literal["mean", "median"] = "mean"
+    statistic: Literal["mean", "median", "psi"] = "mean"
     mode: Literal["snapshot", "trend", "regression"] = "snapshot"
     time_column: str | None = None
 
@@ -205,6 +205,8 @@ class DriftTest(BaseModel):
     def validate_shape(self) -> DriftTest:
         if self.mode in {"trend", "regression"} and not self.time_column:
             raise ValueError(f"{self.mode} drift checks require time_column")
+        if self.statistic == "psi" and self.mode != "snapshot":
+            raise ValueError("psi drift checks require mode=snapshot")
         return self
 
 

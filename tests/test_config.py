@@ -60,7 +60,8 @@ def test_load_config_reads_drift_example_file() -> None:
     config = load_config("examples/drift_model/econeval.yml")
 
     assert config.project == "drift-model"
-    assert len(config.drift_tests) == 3
+    assert len(config.drift_tests) == 4
     assert config.drift_tests[1].mode == "trend"
     assert config.drift_tests[1].time_column == "period"
     assert config.drift_tests[2].mode == "regression"
+    assert config.drift_tests[3].statistic == "psi"

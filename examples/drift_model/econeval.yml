@@ -28,6 +28,13 @@ drift_tests:
     mode: regression
     time_column: period
 
+  - name: demand_signal_psi_shift
+    baseline_dataset: data/psi_baseline.csv
+    dataset: data/psi_current.csv
+    feature: shock
+    threshold: 0.2
+    statistic: psi
+
 fairness:
   enabled: false
   metrics: []

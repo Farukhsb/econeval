@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 - Documented the CLI module in the README project layout.
 - Added contributor and release guidance.
+- Added PSI-based drift detection and a worked drift example.
 
 ## v0.3.1
 

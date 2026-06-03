@@ -138,6 +138,27 @@ def test_run_drift_suite_passes_for_regression_shift() -> None:
     assert results[0].value == pytest.approx(0.01)
 
 
+def test_run_drift_suite_computes_psi() -> None:
+    root = Path(__file__).resolve().parents[1]
+    test = DriftTest(
+        name="shock_feature_psi_shift",
+        baseline_dataset=str(root / "examples" / "drift_model" / "data" / "psi_baseline.csv"),
+        dataset=str(root / "examples" / "drift_model" / "data" / "psi_current.csv"),
+        feature="shock",
+        threshold=0.2,
+        statistic="psi",
+    )
+
+    results = run_drift_suite([test])
+
+    assert results[0].passed is False
+    assert results[0].statistic == "psi"
+    assert results[0].backend == "distribution"
+    assert results[0].value > test.threshold
+    assert "statistic=psi" in (results[0].detail or "")
+    assert drift_suite_passed(results) is False
+
+
 def test_run_economic_drift_suite_passes_for_small_output_shift() -> None:
     root = Path(__file__).resolve().parents[1]
 

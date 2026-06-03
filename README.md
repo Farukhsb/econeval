@@ -290,7 +290,7 @@ If you need a broader or more standardized expression engine later, the most lik
 
 - `examples/basic_model` shows the happy path with invariants, stress tests, drift checks, and fairness checks.
 - `examples/broken_model` shows a model and dataset that fail the checks.
-- `examples/drift_model` focuses on drift validation, including trend drift over time.
+- `examples/drift_model` focuses on drift validation, including PSI, trend drift, and regression drift over time.
 - `examples/fairness_model` focuses on fairness checks and a simple stress test.
 - `examples/policy_model` is a minimal policy-focused fairness example.
 - `examples/advanced_model` shows accounting identities, monotonicity, convergence, grid sweeps, and synthetic shocks.
