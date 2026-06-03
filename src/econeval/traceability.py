@@ -77,7 +77,10 @@ def format_blame_entries(entries: list[dict[str, Any]]) -> str:
 
 def _candidate_model_lines(model: Any, expression: str) -> tuple[str | None, list[int]]:
     model_type = type(model)
-    source_path = inspect.getsourcefile(model_type) or inspect.getfile(model_type)
+    try:
+        source_path = inspect.getsourcefile(model_type) or inspect.getfile(model_type)
+    except (OSError, TypeError):
+        return None, []
     if source_path is None:
         return None, []
 
