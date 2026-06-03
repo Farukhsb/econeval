@@ -195,10 +195,16 @@ def run_drift_test(
     try:
         baseline_rows = _load_rows(_resolve_dataset_source(base_path, test.baseline_dataset))
         current_rows = _load_rows(_resolve_dataset_source(base_path, test.dataset))
-        if test.mode == "trend":
+        if test.statistic == "psi":
+            baseline_value = _feature_statistic(baseline_rows, test.feature, "mean")
+            current_value = _feature_statistic(current_rows, test.feature, "mean")
+            backend = "distribution"
+            value = _population_stability_index(baseline_rows, current_rows, test.feature)
+        elif test.mode == "trend":
             baseline_value = _feature_trend_slope(baseline_rows, test.feature, test.time_column)
             current_value = _feature_trend_slope(current_rows, test.feature, test.time_column)
             backend = "manual"
+            value = abs(current_value - baseline_value)
         elif test.mode == "regression":
             baseline_value, backend = _feature_regression_slope(
                 baseline_rows, test.feature, test.time_column
@@ -206,15 +212,18 @@ def run_drift_test(
             current_value, backend = _feature_regression_slope(
                 current_rows, test.feature, test.time_column
             )
+            value = abs(current_value - baseline_value)
         else:
             baseline_value = _feature_statistic(baseline_rows, test.feature, test.statistic)
             current_value = _feature_statistic(current_rows, test.feature, test.statistic)
             backend = "statistic"
-        value = abs(current_value - baseline_value)
+            value = abs(current_value - baseline_value)
         detail = (
             f"mode={test.mode}, backend={backend}, "
             f"baseline={baseline_value}, current={current_value}"
         )
+        if test.statistic == "psi":
+            detail = f"{detail}, statistic=psi"
         if test.time_column:
             detail = f"{detail}, time_column={test.time_column}"
         return DriftResult(
@@ -1302,6 +1311,94 @@ def _feature_regression_slope(
             raise ValueError("regression drift checks require varying time values") from None
         numerator = sum((x - x_mean) * (y - y_mean) for x, y in points)
         return numerator / denominator, "manual"
+
+
+def _population_stability_index(
+    baseline_rows: list[dict[str, str]],
+    current_rows: list[dict[str, str]],
+    feature: str,
+    bins: int = 10,
+) -> float:
+    if feature not in baseline_rows[0]:
+        raise ValueError(f"drift dataset must include a '{feature}' column")
+    if feature not in current_rows[0]:
+        raise ValueError(f"drift dataset must include a '{feature}' column")
+
+    baseline_values = [_to_float(row[feature], feature) for row in baseline_rows]
+    current_values = [_to_float(row[feature], feature) for row in current_rows]
+    combined = baseline_values + current_values
+    if len(combined) < 2:
+        raise ValueError("psi drift checks require at least two points")
+    if len(set(baseline_values)) < 2:
+        raise ValueError("psi drift checks require varying baseline values")
+
+    bucket_count = max(2, min(bins, len(baseline_values)))
+    edges = _quantile_edges(baseline_values, bucket_count)
+    if len(edges) < 2:
+        raise ValueError("psi drift checks require varying baseline values")
+
+    baseline_hist = _bucket_histogram(baseline_values, edges)
+    current_hist = _bucket_histogram(current_values, edges)
+    epsilon = 1e-12
+    psi = 0.0
+    for baseline_count, current_count in zip(baseline_hist, current_hist, strict=True):
+        baseline_pct = max(baseline_count / len(baseline_values), epsilon)
+        current_pct = max(current_count / len(current_values), epsilon)
+        psi += (current_pct - baseline_pct) * math.log(current_pct / baseline_pct)
+    return psi
+
+
+def _quantile_edges(values: list[float], bins: int) -> list[float]:
+    if bins < 2:
+        return [min(values), max(values)]
+
+    ordered = sorted(values)
+    edges = [ordered[0]]
+    for index in range(1, bins):
+        quantile = index / bins
+        edges.append(_quantile_value(ordered, quantile))
+    edges.append(ordered[-1])
+
+    deduped: list[float] = []
+    for edge in edges:
+        if not deduped or edge > deduped[-1]:
+            deduped.append(edge)
+    return deduped
+
+
+def _quantile_value(values: list[float], quantile: float) -> float:
+    if not values:
+        raise ValueError("percentile requires at least one value")
+    if quantile <= 0:
+        return values[0]
+    if quantile >= 1:
+        return values[-1]
+
+    index = (len(values) - 1) * quantile
+    lower = int(math.floor(index))
+    upper = int(math.ceil(index))
+    if lower == upper:
+        return values[lower]
+    weight = index - lower
+    return values[lower] + ((values[upper] - values[lower]) * weight)
+
+
+def _bucket_histogram(values: list[float], edges: list[float]) -> list[int]:
+    if len(edges) < 2:
+        raise ValueError("psi drift checks require at least two bucket edges")
+
+    counts = [0 for _ in range(len(edges) - 1)]
+    for value in values:
+        for index in range(len(edges) - 1):
+            left = edges[index]
+            right = edges[index + 1]
+            is_last = index == len(edges) - 2
+            if (left <= value < right) or (is_last and value <= right):
+                counts[index] += 1
+                break
+        else:
+            counts[-1] += 1
+    return counts
 
 
 def _economic_output_value(

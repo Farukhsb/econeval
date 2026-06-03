@@ -7,13 +7,13 @@
 [![PyPI version](https://img.shields.io/pypi/v/econeval.svg)](https://pypi.org/project/econeval/)
 [![CI](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml/badge.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
 [![Python 3.10-3.11](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.0-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.3.0)
+[![Version](https://img.shields.io/badge/version-v0.3.1-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.3.1)
 
 EconEval is a small open-source framework for checking economic and policy models in CI.
 
 It is built for the kind of code that can look fine at the syntax level and still be wrong in practice. A model can run, pass unit tests, and still break an economic rule, drift off course after a data change, or produce results that no longer make sense under stress. EconEval is meant to catch those problems early, before they reach a report, dashboard, or paper.
 
-Latest release: [`v0.3.0`](https://github.com/Farukhsb/econeval/releases/tag/v0.3.0)
+Latest release: [`v0.3.1`](https://github.com/Farukhsb/econeval/releases/tag/v0.3.1)
 
 ## What It Does
 
@@ -126,10 +126,13 @@ model repo
 
 ```text
 econeval/
+  .pre-commit-config.yaml
   .github/
     workflows/
       ci.yml
   action.yml
+  scripts/
+    precommit_econeval.py
   examples/
     basic_model/
       model.py
@@ -175,6 +178,12 @@ pip install -e .[dev]
 
 `pytest` and `ruff` are included in the `dev` extra. If you only want the CLI, install the package without the extra.
 
+If you want the repo-local pre-commit hook that runs EconEval on the basic example, install the hooks once:
+
+```bash
+pre-commit install
+```
+
 EconEval parses its YAML-like config format with its own loader, so you do not need `PyYAML` for the current release.
 
 Once the package is published to PyPI, the normal install path will be:
@@ -183,7 +192,7 @@ Once the package is published to PyPI, the normal install path will be:
 pip install econeval
 ```
 
-If you want the published package state, start from the `v0.3.0` release tag or the GitHub release page.
+If you want the published package state, start from the `v0.3.1` release tag or the GitHub release page.
 
 ## How To Use It
 
@@ -196,6 +205,12 @@ econeval --config examples/basic_model/econeval.yml --model examples/basic_model
 ```
 
 If you prefer module execution, `python -m econeval` works the same way.
+
+For iterative development, `--watch` reruns the checks when the config or model file changes:
+
+```bash
+econeval --watch --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report econeval-report.json
+```
 
 To write a text report instead:
 
@@ -258,6 +273,8 @@ What the current runner expects:
 - CSV datasets with an `actual` column for stress tests
 - CSV datasets with the feature or group columns required by the check
 
+EconEval can also adapt common tabular estimators directly when they expose feature metadata such as `feature_names_in_` or `exog_names`.
+
 If your runtime looks different, use a thin adapter. EconEval now normalizes
 common shapes like callable models, `solve()`-style solver wrappers, and
 PyMC-style posterior predictive samplers so you can bridge external engines
@@ -290,7 +307,7 @@ If you need a broader or more standardized expression engine later, the most lik
 
 - `examples/basic_model` shows the happy path with invariants, stress tests, drift checks, and fairness checks.
 - `examples/broken_model` shows a model and dataset that fail the checks.
-- `examples/drift_model` focuses on drift validation, including trend drift over time.
+- `examples/drift_model` focuses on drift validation, including PSI, trend drift, and regression drift over time.
 - `examples/fairness_model` focuses on fairness checks and a simple stress test.
 - `examples/policy_model` is a minimal policy-focused fairness example.
 - `examples/advanced_model` shows accounting identities, monotonicity, convergence, grid sweeps, and synthetic shocks.
@@ -306,7 +323,7 @@ Planned or likely next steps for the project:
 - expand stress testing with parameter shocks and Monte Carlo runs
 - deepen drift detection over time with rolling windows and alerting
 - add fairness and equity checks for policy-relevant models
-- add deeper interop with tools like `pandas`, `statsmodels`, `PyMC`, `GAMS`, and Julia
+- add deeper interop with tools like `PyMC`, `GAMS`, and Julia
 - fairness and drift checks already accept pandas-like row data through `to_dict(orient="records")`
 - install `econeval[stats]` if you want the optional `statsmodels`-based drift helper
 - use `--format dashboard` for a richer HTML overview with filtering and collapsible drill-downs
@@ -335,7 +352,7 @@ When you are ready to publish a new version:
 
 1. run the test suite locally
 2. update the package version if needed
-3. tag the release, for example `v0.3.0`
+3. tag the release, for example `v0.3.2`
 4. publish the GitHub Release so the release workflow runs
 5. confirm the release artifact uploaded from Actions
 6. confirm the wheel and sdist were published to PyPI

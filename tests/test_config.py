@@ -6,10 +6,12 @@ from econeval.config import load_config
 def test_repo_scaffold_exists() -> None:
     assert Path("README.md").exists()
     assert Path("pyproject.toml").exists()
+    assert Path(".pre-commit-config.yaml").exists()
     assert Path("action.yml").exists()
     assert Path("CHANGELOG.md").exists()
     assert Path("CONTRIBUTING.md").exists()
     assert Path("examples/fairness_model/README.md").exists()
+    assert Path("scripts/precommit_econeval.py").exists()
 
 
 def test_load_config_reads_example_file() -> None:
@@ -60,7 +62,8 @@ def test_load_config_reads_drift_example_file() -> None:
     config = load_config("examples/drift_model/econeval.yml")
 
     assert config.project == "drift-model"
-    assert len(config.drift_tests) == 3
+    assert len(config.drift_tests) == 4
     assert config.drift_tests[1].mode == "trend"
     assert config.drift_tests[1].time_column == "period"
     assert config.drift_tests[2].mode == "regression"
+    assert config.drift_tests[3].statistic == "psi"

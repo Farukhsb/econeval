@@ -335,3 +335,30 @@ def test_run_cli_verbose_logs_stage_summaries(capsys: pytest.CaptureFixture[str]
     assert "[econeval] invariants:" in output
     assert "[econeval] economic checks:" in output
     assert "[econeval] wrote report to" in output
+
+
+def test_run_cli_watch_mode_routes_to_watch_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = {}
+
+    def fake_watch_mode(args, log):
+        called["watch"] = True
+        assert args.watch is True
+        assert callable(log)
+        return 0
+
+    monkeypatch.setattr("econeval.cli._run_watch_mode", fake_watch_mode)
+
+    exit_code = run_cli(
+        [
+            "--config",
+            "examples/basic_model/econeval.yml",
+            "--model",
+            "examples/basic_model/model.py",
+            "--watch",
+        ]
+    )
+
+    assert exit_code == 0
+    assert called["watch"] is True
