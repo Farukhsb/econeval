@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+Releases follow semantic versioning:
+
+- `MAJOR` for breaking changes
+- `MINOR` for new backwards-compatible features
+- `PATCH` for bug fixes, docs updates, and small cleanup
+
 ## Unreleased
 
 - No unreleased changes yet.

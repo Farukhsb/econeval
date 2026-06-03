@@ -111,13 +111,13 @@ fairness:
 
 ## How It Fits Together
 
-```text
-model repo
-  -> econeval.yml
-  -> load config
-  -> run invariant checks
-  -> collect results
-  -> fail or pass CI
+```mermaid
+flowchart LR
+  A[Model repo] --> B[econeval.yml]
+  B --> C[Load config]
+  C --> D[Run checks]
+  D --> E[Collect results]
+  E --> F{Pass or fail CI}
 ```
 
 ## Project Layout
@@ -197,6 +197,20 @@ pip install git+https://github.com/Farukhsb/econeval.git@v0.3.2
 ```
 
 If you want to inspect the release artifacts first, start from the `v0.3.2` tag or the GitHub release page.
+
+## Getting Started
+
+1. Install the package with `pip install econeval` or `pip install -e .[dev]` from a checkout.
+2. Run the basic example config.
+3. Check the generated report and try the broken example next.
+
+Example:
+
+```bash
+econeval --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report econeval-report.json
+```
+
+If you want a quick sanity check, run the broken example next and confirm it fails.
 
 ## How To Use It
 
