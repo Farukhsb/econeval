@@ -1,4 +1,5 @@
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from econeval.cli import run_cli
@@ -72,3 +73,29 @@ def test_run_cli_writes_structured_config_error(tmp_path: Path) -> None:
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["summary"]["status"] == "fail"
     assert payload["issues"][0]["stage"] == "config"
+
+
+def test_run_cli_writes_junit_report(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    report_path = tmp_path / "econeval-report.xml"
+    config_path = root / "examples" / "basic_model" / "econeval.yml"
+    model_path = root / "examples" / "basic_model" / "model.py"
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--model",
+            str(model_path),
+            "--class",
+            "DemoModel",
+            "--report",
+            str(report_path),
+            "--format",
+            "junit",
+        ]
+    )
+
+    assert exit_code == 0
+    root_element = ET.fromstring(report_path.read_text(encoding="utf-8"))
+    assert root_element.tag == "testsuites"

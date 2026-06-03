@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,3 +64,87 @@ def write_json_report(path: str | Path, report: dict[str, Any]) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_junit_report(path: str | Path, report: dict[str, Any]) -> None:
+    """Write a JUnit XML report artifact to disk."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    tests = int(report["summary"]["total"])
+    failures = int(report["summary"]["failed"])
+    skipped = 0
+
+    root = ET.Element(
+        "testsuites",
+        attrib={
+            "tests": str(tests),
+            "failures": str(failures),
+            "skipped": str(skipped),
+        },
+    )
+    suite = ET.SubElement(
+        root,
+        "testsuite",
+        attrib={
+            "name": str(report["project"]),
+            "tests": str(tests),
+            "failures": str(failures),
+            "skipped": str(skipped),
+            "timestamp": str(report["generated_at"]),
+        },
+    )
+
+    for item in report.get("invariants", []):
+        _append_case(suite, "invariant", item["name"], item)
+    for item in report.get("stress_tests", []):
+        _append_case(suite, "stress_test", item["name"], item)
+    for item in report.get("drift_checks", []):
+        _append_case(suite, "drift_check", item["name"], item)
+    for item in report.get("fairness_checks", []):
+        _append_case(suite, "fairness_check", item["name"], item)
+    for item in report.get("issues", []):
+        _append_issue_case(suite, item)
+
+    output_path.write_text(ET.tostring(root, encoding="unicode") + "\n", encoding="utf-8")
+
+
+def _append_case(parent: ET.Element, kind: str, name: str, payload: dict[str, Any]) -> None:
+    case = ET.SubElement(
+        parent,
+        "testcase",
+        attrib={
+            "classname": kind,
+            "name": str(name),
+        },
+    )
+    if payload.get("passed", True):
+        return
+
+    failure = ET.SubElement(case, "failure", attrib={"message": payload.get("error") or "check failed"})
+    body = {
+        "kind": kind,
+        "name": name,
+        "payload": payload,
+    }
+    failure.text = json.dumps(body, indent=2, sort_keys=True)
+
+
+def _append_issue_case(parent: ET.Element, issue: dict[str, Any]) -> None:
+    case = ET.SubElement(
+        parent,
+        "testcase",
+        attrib={
+            "classname": "issue",
+            "name": str(issue["stage"]),
+        },
+    )
+    failure = ET.SubElement(
+        case,
+        "error",
+        attrib={
+            "message": issue.get("message") or "execution issue",
+        },
+    )
+    failure.text = json.dumps(issue, indent=2, sort_keys=True)

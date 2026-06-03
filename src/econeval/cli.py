@@ -10,7 +10,7 @@ from pathlib import Path
 from .config import load_config
 from .errors import ExecutionIssue
 from .invariants import run_invariant_suite, suite_passed
-from .reporting import build_json_report, write_json_report
+from .reporting import build_json_report, write_junit_report, write_json_report
 from .scenarios import (
     fairness_suite_passed,
     drift_suite_passed,
@@ -36,6 +36,14 @@ def build_parser() -> argparse.ArgumentParser:
         default="econeval-report.json",
         help="Where to write the JSON report.",
     )
+    parser.add_argument(
+        "--format",
+        choices=("json", "junit"),
+        default="json",
+        help="Report format to write.",
+    )
+    parser.add_argument("--verbose", action="store_true", help="Print detailed progress messages.")
+    parser.add_argument("--quiet", action="store_true", help="Suppress non-error output.")
     return parser
 
 
@@ -62,8 +70,10 @@ def run_cli(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     issues: list[ExecutionIssue] = []
+    log = _build_logger(args.verbose, args.quiet)
 
     try:
+        log("loading config")
         config = load_config(args.config)
     except Exception as exc:
         issues.append(ExecutionIssue(stage="config", message=str(exc), detail=str(args.config)))
@@ -75,11 +85,12 @@ def run_cli(argv: list[str] | None = None) -> int:
             fairness_results=[],
             issues=issues,
         )
-        write_json_report(args.report, report)
-        print(f"EconEval: fail (config error: {exc})")
+        _write_report(args.format, args.report, report)
+        _print_failure("config load", exc, args.quiet)
         return 1
 
     try:
+        log("loading model")
         model_class = load_model_class(args.model, args.class_name)
         model = model_class()
     except Exception as exc:
@@ -92,15 +103,19 @@ def run_cli(argv: list[str] | None = None) -> int:
             fairness_results=[],
             issues=issues,
         )
-        write_json_report(args.report, report)
-        print(f"EconEval: fail (model error: {exc})")
+        _write_report(args.format, args.report, report)
+        _print_failure("model load", exc, args.quiet)
         return 1
 
+    log("running invariants")
     results = run_invariant_suite(model, config.invariants)
+    log("running stress tests")
     scenario_results = run_stress_suite(model, config.stress_tests, base_path=Path(args.config).parent)
+    log("running drift checks")
     drift_results = run_drift_suite(config.drift_tests, base_path=Path(args.config).parent)
     fairness_results = []
     if config.fairness.enabled and config.fairness.dataset:
+        log("running fairness checks")
         fairness_results = run_fairness_checks(
             model,
             config.fairness.dataset,
@@ -111,10 +126,10 @@ def run_cli(argv: list[str] | None = None) -> int:
         )
 
     report = build_json_report(config, results, scenario_results, drift_results, fairness_results)
-    write_json_report(args.report, report)
+    _write_report(args.format, args.report, report)
 
     status = report["summary"]["status"]
-    print(f"EconEval: {status} ({report['summary']['passed']}/{report['summary']['total']} checks passed)")
+    _print_summary(status, report["summary"]["passed"], report["summary"]["total"], args.quiet, args.format)
 
     return 0 if (
         suite_passed(results)
@@ -128,6 +143,33 @@ def _placeholder_config():
     from .config import EconEvalConfig
 
     return EconEvalConfig(project="unavailable")
+
+
+def _write_report(report_format: str, path: str | Path, report: dict[str, object]) -> None:
+    if report_format == "junit":
+        write_junit_report(path, report)
+        return
+    write_json_report(path, report)
+
+
+def _build_logger(verbose: bool, quiet: bool):
+    if quiet:
+        return lambda message: None
+    if not verbose:
+        return lambda message: None
+    return lambda message: print(f"[econeval] {message}")
+
+
+def _print_summary(status: str, passed: int, total: int, quiet: bool, report_format: str) -> None:
+    if quiet:
+        return
+    print(f"EconEval: {status} ({passed}/{total} checks passed, format={report_format})")
+
+
+def _print_failure(stage: str, exc: Exception, quiet: bool) -> None:
+    if quiet:
+        return
+    print(f"EconEval: fail ({stage}: {exc})")
 
 
 def main(argv: list[str] | None = None) -> int:

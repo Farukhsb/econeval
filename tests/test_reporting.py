@@ -3,7 +3,7 @@ from pathlib import Path
 from econeval.config import DriftTest, EconEvalConfig, FairnessConfig, InvariantRule
 from econeval.errors import ExecutionIssue
 from econeval.invariants import InvariantResult
-from econeval.reporting import build_json_report, write_json_report
+from econeval.reporting import build_json_report, write_json_report, write_junit_report
 from econeval.scenarios import DriftResult, FairnessResult, ScenarioResult
 
 
@@ -105,3 +105,19 @@ def test_write_json_report_creates_parent_directories(tmp_path: Path) -> None:
 
     assert report_path.exists()
     assert report_path.read_text(encoding="utf-8").strip() == '{\n  "hello": "world"\n}'
+
+
+def test_write_junit_report_writes_xml(tmp_path: Path) -> None:
+    report_path = tmp_path / "artifacts" / "econeval-report.xml"
+    report = build_json_report(
+        EconEvalConfig(project="demo-model"),
+        [InvariantResult(name="elasticity", expression="model.elasticity < 0", passed=False, error="bad")],
+        issues=[ExecutionIssue(stage="config", message="missing config")],
+    )
+
+    write_junit_report(report_path, report)
+
+    text = report_path.read_text(encoding="utf-8")
+    assert "<testsuites" in text
+    assert "<failure" in text
+    assert "<error" in text
