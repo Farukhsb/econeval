@@ -126,10 +126,13 @@ model repo
 
 ```text
 econeval/
+  .pre-commit-config.yaml
   .github/
     workflows/
       ci.yml
   action.yml
+  scripts/
+    precommit_econeval.py
   examples/
     basic_model/
       model.py
@@ -175,6 +178,12 @@ pip install -e .[dev]
 
 `pytest` and `ruff` are included in the `dev` extra. If you only want the CLI, install the package without the extra.
 
+If you want the repo-local pre-commit hook that runs EconEval on the basic example, install the hooks once:
+
+```bash
+pre-commit install
+```
+
 EconEval parses its YAML-like config format with its own loader, so you do not need `PyYAML` for the current release.
 
 Once the package is published to PyPI, the normal install path will be:
@@ -196,6 +205,12 @@ econeval --config examples/basic_model/econeval.yml --model examples/basic_model
 ```
 
 If you prefer module execution, `python -m econeval` works the same way.
+
+For iterative development, `--watch` reruns the checks when the config or model file changes:
+
+```bash
+econeval --watch --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report econeval-report.json
+```
 
 To write a text report instead:
 
@@ -258,6 +273,8 @@ What the current runner expects:
 - CSV datasets with an `actual` column for stress tests
 - CSV datasets with the feature or group columns required by the check
 
+EconEval can also adapt common tabular estimators directly when they expose feature metadata such as `feature_names_in_` or `exog_names`.
+
 If your runtime looks different, use a thin adapter. EconEval now normalizes
 common shapes like callable models, `solve()`-style solver wrappers, and
 PyMC-style posterior predictive samplers so you can bridge external engines
@@ -306,7 +323,7 @@ Planned or likely next steps for the project:
 - expand stress testing with parameter shocks and Monte Carlo runs
 - deepen drift detection over time with rolling windows and alerting
 - add fairness and equity checks for policy-relevant models
-- add deeper interop with tools like `pandas`, `statsmodels`, `PyMC`, `GAMS`, and Julia
+- add deeper interop with tools like `PyMC`, `GAMS`, and Julia
 - fairness and drift checks already accept pandas-like row data through `to_dict(orient="records")`
 - install `econeval[stats]` if you want the optional `statsmodels`-based drift helper
 - use `--format dashboard` for a richer HTML overview with filtering and collapsible drill-downs
@@ -335,7 +352,7 @@ When you are ready to publish a new version:
 
 1. run the test suite locally
 2. update the package version if needed
-3. tag the release, for example `v0.3.1`
+3. tag the release, for example `v0.3.2`
 4. publish the GitHub Release so the release workflow runs
 5. confirm the release artifact uploaded from Actions
 6. confirm the wheel and sdist were published to PyPI

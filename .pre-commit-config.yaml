@@ -17,3 +17,12 @@ repos:
       - id: end-of-file-fixer
       - id: mixed-line-ending
       - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: econeval-basic-example
+        name: econeval basic example
+        entry: python scripts/precommit_econeval.py
+        language: system
+        pass_filenames: false
+        always_run: true

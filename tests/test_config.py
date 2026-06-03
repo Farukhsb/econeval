@@ -6,10 +6,12 @@ from econeval.config import load_config
 def test_repo_scaffold_exists() -> None:
     assert Path("README.md").exists()
     assert Path("pyproject.toml").exists()
+    assert Path(".pre-commit-config.yaml").exists()
     assert Path("action.yml").exists()
     assert Path("CHANGELOG.md").exists()
     assert Path("CONTRIBUTING.md").exists()
     assert Path("examples/fairness_model/README.md").exists()
+    assert Path("scripts/precommit_econeval.py").exists()
 
 
 def test_load_config_reads_example_file() -> None:

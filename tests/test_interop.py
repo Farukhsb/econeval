@@ -24,6 +24,32 @@ class GamsLikeModel:
         return {"model_status": "Optimal"}
 
 
+class SklearnLikeModel:
+    feature_names_in_ = ("shock", "demand")
+
+    def predict(self, rows: list[list[float]] | object) -> list[float]:
+        if hasattr(rows, "iloc"):
+            row = rows.iloc[0]
+            values = [float(value) for value in row.tolist()]
+        else:
+            row = rows[0]
+            values = [float(value) for value in row]
+        return [sum(values)]
+
+
+class StatsmodelsLikeModel:
+    exog_names = ("const", "shock")
+
+    def predict(self, rows: list[list[float]] | object) -> list[float]:
+        if hasattr(rows, "iloc"):
+            row = rows.iloc[0]
+            values = [float(value) for value in row.tolist()]
+        else:
+            row = rows[0]
+            values = [float(value) for value in row]
+        return [sum(values)]
+
+
 def test_callable_model_supports_stress_checks() -> None:
     model = CallableModel()
     test = StressTest(
@@ -64,3 +90,17 @@ def test_solver_status_strings_are_recognized() -> None:
 
     assert result.passed is True
     assert result.value == 0.0
+
+
+def test_sklearn_style_estimators_receive_tabular_inputs() -> None:
+    model = SklearnLikeModel()
+    runtime = resolve_model_runtime(model)
+
+    assert runtime.predict({"shock": 0.5, "demand": 1.5}) == pytest.approx(2.0)
+
+
+def test_statsmodels_style_estimators_receive_intercept_and_features() -> None:
+    model = StatsmodelsLikeModel()
+    runtime = resolve_model_runtime(model)
+
+    assert runtime.predict({"shock": 0.5}) == pytest.approx(1.5)

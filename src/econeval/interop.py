@@ -4,6 +4,7 @@ The public EconEval checks are intentionally small, but many real models do not
 expose the exact same surface. This module normalizes a few common shapes:
 
 - classic Python objects with ``predict(features)`` and ``solve()`` methods
+- sklearn/statsmodels-style estimators that expect a single row of tabular input
 - callable wrappers, which are convenient for Julia or GAMS bridges
 - PyMC-style objects that expose posterior predictive sampling instead of a
   direct point prediction API
@@ -68,8 +69,9 @@ class ModelRuntime:
 
     def predict(self, features: dict[str, float]) -> Any:
         if self.predict_method:
+            input_features = _prepare_prediction_input(self.model, features)
             return _summarize_prediction_output(
-                _invoke_bound_method(getattr(self.model, self.predict_method), features)
+                _invoke_bound_method(getattr(self.model, self.predict_method), input_features)
             )
         if self.predictive_sample_method:
             output = _invoke_bound_method(
@@ -189,6 +191,77 @@ def _extract_value(value: Any, key: str) -> Any | None:
     if hasattr(value, key):
         return getattr(value, key)
     return None
+
+
+def _prepare_prediction_input(model: Any, features: dict[str, float]) -> Any:
+    if not _looks_like_tabular_model(model):
+        return features
+
+    feature_names = _prediction_feature_names(model, features)
+    if not feature_names:
+        return features
+
+    row: list[Any] = []
+    for name in feature_names:
+        if name in _INTERCEPT_NAMES:
+            row.append(1.0)
+            continue
+        if name not in features:
+            return features
+        row.append(features[name])
+
+    try:
+        import pandas as pd
+
+        return pd.DataFrame([row], columns=feature_names)
+    except Exception:
+        return [row]
+
+
+def _looks_like_tabular_model(model: Any) -> bool:
+    module_name = getattr(type(model), "__module__", "")
+    return (
+        module_name.startswith("sklearn.")
+        or module_name.startswith("statsmodels.")
+        or hasattr(model, "feature_names_in_")
+        or hasattr(model, "exog_names")
+        or hasattr(getattr(model, "model", None), "exog_names")
+    )
+
+
+def _prediction_feature_names(model: Any, features: dict[str, float]) -> list[str]:
+    candidates: list[str] = []
+    for source in (
+        getattr(model, "feature_names_in_", None),
+        getattr(model, "exog_names", None),
+        getattr(getattr(model, "model", None), "exog_names", None),
+    ):
+        if source is None:
+            continue
+        if isinstance(source, str):
+            candidates.append(source)
+            continue
+        candidates.extend(list(source))
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for name in candidates:
+        if name in seen:
+            continue
+        if name in _INTERCEPT_NAMES or name in features:
+            ordered.append(str(name))
+            seen.add(str(name))
+
+    if ordered:
+        return ordered
+
+    if _looks_like_tabular_model(model) and features:
+        return sorted(features)
+
+    return []
+
+
+_INTERCEPT_NAMES = {"const", "intercept", "Intercept", "bias"}
 
 
 def _summarize_prediction_output(value: Any) -> Any:

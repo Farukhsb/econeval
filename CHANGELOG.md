@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 - Documented the CLI module in the README project layout.
 - Added contributor and release guidance.
 - Added PSI-based drift detection and a worked drift example.
+- Added `--watch` mode for iterative reruns.
+- Added a repo-local pre-commit hook for the basic example.
+- Improved direct interop for tabular sklearn/statsmodels-style models.
 
 ## v0.3.1
 

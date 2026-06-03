@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import os
 import sys
+import time
 from pathlib import Path
 from time import perf_counter
 
@@ -71,6 +72,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--verbose", action="store_true", help="Print detailed progress messages.")
     parser.add_argument("--quiet", action="store_true", help="Suppress non-error output.")
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Keep rerunning checks when the config or model file changes.",
+    )
+    parser.add_argument(
+        "--watch-interval",
+        type=float,
+        default=1.0,
+        help="Seconds to wait between watch polls.",
+    )
     return parser
 
 
@@ -102,8 +114,34 @@ def load_model_class(model_path: str | Path, class_name: str):
 def run_cli(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    issues: list[ExecutionIssue] = []
     log = _build_logger(args.verbose, args.quiet)
+
+    if args.watch:
+        return _run_watch_mode(args, log)
+
+    report, exit_code = _run_checks_once(args, log)
+    _write_report(args.format, args.report, report)
+    _write_step_summary(report)
+    log(f"wrote report to {args.report}")
+    _print_summary(
+        report["summary"]["status"],
+        report["summary"]["passed"],
+        report["summary"]["total"],
+        args.quiet,
+        args.format,
+    )
+    return exit_code
+
+
+def _placeholder_config():
+    from .config import EconEvalConfig
+
+    return EconEvalConfig(project="unavailable")
+
+
+def _run_checks_once(args, log):
+    issues: list[ExecutionIssue] = []
+    config = None
 
     try:
         log("loading config")
@@ -118,10 +156,8 @@ def run_cli(argv: list[str] | None = None) -> int:
             fairness_results=[],
             issues=issues,
         )
-        _write_report(args.format, args.report, report)
-        _write_step_summary(report)
         _print_failure("config load", exc, args.quiet)
-        return 1
+        return report, 1
 
     try:
         log("loading model")
@@ -137,10 +173,8 @@ def run_cli(argv: list[str] | None = None) -> int:
             fairness_results=[],
             issues=issues,
         )
-        _write_report(args.format, args.report, report)
-        _write_step_summary(report)
         _print_failure("model load", exc, args.quiet)
-        return 1
+        return report, 1
 
     log("running invariants")
     started_at = perf_counter()
@@ -199,20 +233,7 @@ def run_cli(argv: list[str] | None = None) -> int:
         economic_results=economic_results,
         economic_drift_results=economic_drift_results,
     )
-    _write_report(args.format, args.report, report)
-    _write_step_summary(report)
-    log(f"wrote report to {args.report}")
-
-    status = report["summary"]["status"]
-    _print_summary(
-        status,
-        report["summary"]["passed"],
-        report["summary"]["total"],
-        args.quiet,
-        args.format,
-    )
-
-    return (
+    status = (
         0
         if (
             suite_passed(results)
@@ -224,12 +245,64 @@ def run_cli(argv: list[str] | None = None) -> int:
         )
         else 1
     )
+    return report, status
 
 
-def _placeholder_config():
-    from .config import EconEvalConfig
+def _run_watch_mode(args, log) -> int:
+    watched_paths = _watch_paths(args)
+    watched_state = _snapshot_watch_state(watched_paths)
 
-    return EconEvalConfig(project="unavailable")
+    while True:
+        report, exit_code = _run_checks_once(args, log)
+        _write_report(args.format, args.report, report)
+        _write_step_summary(report)
+        log(f"wrote report to {args.report}")
+        _print_summary(
+            report["summary"]["status"],
+            report["summary"]["passed"],
+            report["summary"]["total"],
+            args.quiet,
+            args.format,
+        )
+        log(
+            "watching for changes in "
+            + ", ".join(str(path) for path in watched_paths)
+            + f" (interval={args.watch_interval:.2f}s)"
+        )
+        _wait_for_watch_change(watched_paths, watched_state, args.watch_interval)
+
+
+def _watch_paths(args) -> list[Path]:
+    return [Path(args.config).resolve(), Path(args.model).resolve()]
+
+
+def _snapshot_watch_state(paths: list[Path]) -> dict[Path, tuple[int, int] | None]:
+    state: dict[Path, tuple[int, int] | None] = {}
+    for path in paths:
+        state[path] = _path_state(path)
+    return state
+
+
+def _path_state(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+def _wait_for_watch_change(
+    paths: list[Path],
+    watched_state: dict[Path, tuple[int, int] | None],
+    interval: float,
+) -> None:
+    while True:
+        for path in paths:
+            current_state = _path_state(path)
+            if current_state != watched_state[path]:
+                watched_state[path] = current_state
+                return
+        time.sleep(max(interval, 0.1))
 
 
 def _write_report(report_format: str, path: str | Path, report: dict[str, object]) -> None:
