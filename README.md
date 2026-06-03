@@ -354,6 +354,19 @@ It rejects function calls, subscripts, comprehensions, lambdas, dictionaries, se
 
 That design keeps the syntax simple for users while avoiding raw `eval()` and other arbitrary Python execution paths.
 
+## Expression Engine Philosophy
+
+The expression layer is intentionally not a general Python runtime.
+
+That is a design choice:
+
+- keep invariant checks auditable
+- make failures easier to explain in CI
+- avoid hidden side effects and sandbox escape risks
+- keep the supported syntax small enough that users can reason about it quickly
+
+The practical rule is simple: if a check needs full Python, put that logic in code, not in the expression string. The expression engine is meant for declarative rules, not imperative workflows.
+
 ## Examples
 
 - `examples/basic_model` shows the happy path.
