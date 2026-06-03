@@ -153,6 +153,19 @@ If the expression returns `False`, the invariant fails.
 
 The JSON report includes the project name, a summary count, and the result of each invariant, stress test, drift check, and fairness check.
 
+## Expression Engine
+
+EconEval uses a restricted AST-based expression engine for invariants.
+
+That keeps the syntax simple for users while avoiding raw `eval()`. It is still a security-sensitive surface, so the allowed syntax is intentionally narrow:
+
+- basic comparisons
+- boolean logic
+- simple arithmetic
+- attribute access on the model object
+
+If you need a broader or more standardized expression engine later, the most likely replacement options are `asteval` or `numexpr`, depending on whether you need general Python-like rules or numeric-only expressions.
+
 ## Examples
 
 - `examples/basic_model` shows the happy path with invariants, stress tests, drift checks, and fairness checks.
