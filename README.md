@@ -6,13 +6,13 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/econeval.svg)](https://pypi.org/project/econeval/)
 [![Tests](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml/badge.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-v0.2.1-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.2.1)
+[![Version](https://img.shields.io/badge/version-v0.3.0-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.3.0)
 
 EconEval is a small open-source framework for checking economic and policy models in CI.
 
 It is built for the kind of code that can look fine at the syntax level and still be wrong in practice. A model can run, pass unit tests, and still break an economic rule, drift off course after a data change, or produce results that no longer make sense under stress. EconEval is meant to catch those problems early, before they reach a report, dashboard, or paper.
 
-Latest release: [`v0.2.1`](https://github.com/Farukhsb/econeval/releases/tag/v0.2.1)
+Latest release: [`v0.3.0`](https://github.com/Farukhsb/econeval/releases/tag/v0.3.0)
 
 ## What It Does
 
@@ -169,7 +169,7 @@ pip install -e .[dev]
 
 `pytest` and `ruff` are included in the `dev` extra. If you only want the CLI, install the package without the extra.
 
-If you want the published package state, start from the `v0.2.1` release tag or the GitHub release page.
+If you want the published package state, start from the `v0.3.0` release tag or the GitHub release page.
 
 ## How To Use It
 
@@ -282,7 +282,7 @@ When you are ready to publish a new version:
 
 1. run the test suite locally
 2. update the package version if needed
-3. tag the release, for example `v0.2.1`
+3. tag the release, for example `v0.3.0`
 4. publish the GitHub Release so the release workflow runs
 5. confirm the release artifact uploaded from Actions
 
