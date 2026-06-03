@@ -7,14 +7,14 @@ import csv
 import itertools
 import math
 import random
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean, median
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
-from .config import DriftTest, EconomicCheck, EconomicDriftTest, StressTest
+from .config import DriftTest, EconomicCheck, EconomicDriftTest, StressManipulation, StressTest
 from .interop import resolve_model_runtime
 from .invariants import evaluate_expression
 
@@ -37,13 +37,13 @@ class ScenarioResult:
     value: float
     passed: bool
     detail: str | None = None
-    manipulations: list[dict[str, Any]] | None = None
-    invariants: list[dict[str, Any]] | None = None
+    manipulations: list[dict[str, object]] | None = None
+    invariants: list[dict[str, object]] | None = None
     samples: int | None = None
     grid_points: int | None = None
     failure_count: int | None = None
     percentiles: dict[str, float] | None = None
-    worst_sample: dict[str, Any] | None = None
+    worst_sample: dict[str, object] | None = None
     visual: str | None = None
     error: str | None = None
     error_type: str | None = None
@@ -118,6 +118,42 @@ class EconomicCheckResult:
     visual: str | None = None
     error: str | None = None
     error_type: str | None = None
+
+
+EconomicCheckHandler = Callable[[object, EconomicCheck], EconomicCheckResult]
+_ECONOMIC_CHECK_HANDLERS: dict[str, EconomicCheckHandler] = {}
+
+
+@runtime_checkable
+class SupportsToDictRecords(Protocol):
+    def to_dict(self, orient: str = "records") -> list[dict[str, object]]: ...
+
+
+DatasetSource = Path | str | SupportsToDictRecords
+
+
+@runtime_checkable
+class SupportsSuccess(Protocol):
+    success: bool
+
+
+@runtime_checkable
+class SupportsConverged(Protocol):
+    converged: bool
+
+
+def register_economic_check_handler(kind: str, handler: EconomicCheckHandler) -> None:
+    """Register a custom handler for an economic check kind."""
+
+    if not kind:
+        raise ValueError("economic check kind must be a non-empty string")
+    _ECONOMIC_CHECK_HANDLERS[kind] = handler
+
+
+def unregister_economic_check_handler(kind: str) -> None:
+    """Remove a previously registered custom economic check handler."""
+
+    _ECONOMIC_CHECK_HANDLERS.pop(kind, None)
 
 
 def run_stress_test(
@@ -326,6 +362,9 @@ def run_economic_drift_suite(
 
 def run_economic_check(model: Any, check: EconomicCheck) -> EconomicCheckResult:
     try:
+        handler = _ECONOMIC_CHECK_HANDLERS.get(check.kind)
+        if handler is not None:
+            return handler(model, check)
         if check.kind == "accounting_identity":
             return _run_accounting_identity_check(model, check)
         if check.kind == "monotonicity":
@@ -816,16 +855,20 @@ def _run_convergence_check(model: Any, check: EconomicCheck) -> EconomicCheckRes
     method_name = check.method or "solve"
     runtime = resolve_model_runtime(model)
     method = getattr(runtime.model, method_name, None)
+    solver_result = None
     if method is None:
-        raise ValueError(f"model does not define {method_name}")
+        if method_name == "solve" and _solve_result_passed(runtime.model):
+            solver_result = runtime.model
+        else:
+            raise ValueError(f"model does not define {method_name}")
 
     states = _initial_states(check)
     observations: list[float] = []
     failed_states = 0
-    worst_state: dict[str, Any] | None = None
+    worst_state: dict[str, object] | None = None
     for state in states:
         with _temporary_model_state(model, state):
-            result = method()
+            result = solver_result if solver_result is not None else method()
         passed = _solve_result_passed(result)
         observations.append(1.0 if passed else 0.0)
         if not passed:
@@ -976,7 +1019,7 @@ def economic_suite_passed(results: list[EconomicCheckResult]) -> bool:
     return all(result.passed for result in results)
 
 
-def _load_rows(source: Any) -> list[dict[str, str]]:
+def _load_rows(source: DatasetSource) -> list[dict[str, str]]:
     if hasattr(source, "to_dict"):
         rows = source.to_dict(orient="records")
         if not isinstance(rows, list) or not rows:
@@ -999,8 +1042,8 @@ def _load_rows(source: Any) -> list[dict[str, str]]:
     return rows
 
 
-def _resolve_dataset_source(base_path: str | Path | None, dataset: Any) -> Any:
-    if hasattr(dataset, "to_dict"):
+def _resolve_dataset_source(base_path: str | Path | None, dataset: DatasetSource) -> DatasetSource:
+    if isinstance(dataset, SupportsToDictRecords):
         return dataset
     return Path(base_path) / dataset if base_path else Path(dataset)
 
@@ -1010,8 +1053,11 @@ def _initial_states(check: EconomicCheck) -> list[dict[str, Any]]:
 
 
 @contextmanager
-def _temporary_manipulations(model: Any, manipulations: Iterable[Any]):
-    roots: dict[str, Any] = {}
+def _temporary_manipulations(
+    model: Any,
+    manipulations: Iterable[StressManipulation],
+):
+    roots: dict[str, object] = {}
     try:
         for manipulation in manipulations:
             root_name = manipulation.variable.split(".", 1)[0]
@@ -1027,7 +1073,7 @@ def _temporary_manipulations(model: Any, manipulations: Iterable[Any]):
 
 @contextmanager
 def _temporary_model_state(model: Any, state: dict[str, Any]):
-    previous: dict[str, tuple[bool, Any]] = {}
+    previous: dict[str, tuple[bool, object]] = {}
     try:
         for key, value in state.items():
             had_attr = hasattr(model, key)
@@ -1042,7 +1088,7 @@ def _temporary_model_state(model: Any, state: dict[str, Any]):
                 delattr(model, key)
 
 
-def _apply_manipulation(model: Any, manipulation: Any) -> None:
+def _apply_manipulation(model: Any, manipulation: StressManipulation) -> None:
     current_value = _to_float(_get_path_value(model, manipulation.variable), manipulation.variable)
     if manipulation.action == "add":
         next_value = current_value + manipulation.value
@@ -1055,22 +1101,28 @@ def _apply_manipulation(model: Any, manipulation: Any) -> None:
     _set_path_value(model, manipulation.variable, next_value)
 
 
-def _solve_result_passed(result: Any) -> bool:
+def _solve_result_passed(result: object) -> bool:
     if isinstance(result, bool):
         return result
-    if hasattr(result, "converged"):
+    if isinstance(result, SupportsSuccess):
+        return bool(result.success)
+    if isinstance(result, SupportsConverged):
         return bool(result.converged)
     if isinstance(result, dict):
-        for key in ("converged", "status", "solve_status", "model_status"):
+        for key in ("success", "converged", "status", "solve_status", "model_status"):
             if key in result:
+                if key == "success":
+                    return bool(result[key])
                 return _status_passed(result[key])
-    for key in ("status", "solve_status", "model_status"):
+    for key in ("success", "status", "solve_status", "model_status"):
         if hasattr(result, key):
+            if key == "success":
+                return bool(getattr(result, key))
             return _status_passed(getattr(result, key))
     return bool(result)
 
 
-def _status_passed(value: Any) -> bool:
+def _status_passed(value: object) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, int | float):
@@ -1081,7 +1133,7 @@ def _status_passed(value: Any) -> bool:
 
 
 def _invoke_scan_method(
-    method: Any,
+    method: object,
     input_variable: str,
     value: float,
     output_variable: str,
@@ -1098,7 +1150,7 @@ def _invoke_scan_method(
     return _to_float(result, output_variable)
 
 
-def _manipulation_dict(manipulation: Any) -> dict[str, Any]:
+def _manipulation_dict(manipulation: StressManipulation) -> dict[str, object]:
     payload = {
         "variable": manipulation.variable,
         "action": manipulation.action,
@@ -1109,20 +1161,26 @@ def _manipulation_dict(manipulation: Any) -> dict[str, Any]:
     return payload
 
 
-def _sample_manipulation(manipulation: Any, rng: random.Random) -> Any:
+def _sample_manipulation(
+    manipulation: StressManipulation,
+    rng: random.Random,
+) -> StressManipulation:
     sampled = copy.deepcopy(manipulation)
     if getattr(manipulation, "sigma", None) is not None:
         sampled.value = rng.normalvariate(manipulation.value, manipulation.sigma)
     return sampled
 
 
-def _sample_manipulations(manipulations: list[Any], rng: random.Random) -> list[Any]:
-    grouped: dict[str, list[Any]] = {}
+def _sample_manipulations(
+    manipulations: list[StressManipulation],
+    rng: random.Random,
+) -> list[StressManipulation]:
+    grouped: dict[str, list[StressManipulation]] = {}
     for manipulation in manipulations:
         group_name = getattr(manipulation, "correlation_group", None) or manipulation.variable
         grouped.setdefault(group_name, []).append(manipulation)
 
-    sampled: list[Any] = []
+    sampled: list[StressManipulation] = []
     for _group_name, group_manipulations in grouped.items():
         shared_z = rng.normalvariate(0.0, 1.0)
         for manipulation in group_manipulations:
@@ -1131,10 +1189,10 @@ def _sample_manipulations(manipulations: list[Any], rng: random.Random) -> list[
 
 
 def _sample_correlated_manipulation(
-    manipulation: Any,
+    manipulation: StressManipulation,
     rng: random.Random,
     shared_z: float,
-) -> Any:
+) -> StressManipulation:
     sampled = copy.deepcopy(manipulation)
     sigma = getattr(manipulation, "sigma", None)
     if sigma is None:
@@ -1509,14 +1567,14 @@ def _nonnegative_values(values: list[float]) -> list[float]:
     return [value + offset for value in values]
 
 
-def _get_path_value(target: Any, path: str) -> Any:
+def _get_path_value(target: object, path: str) -> object:
     current = target
     for segment in path.split("."):
         current = current[segment] if isinstance(current, dict) else getattr(current, segment)
     return current
 
 
-def _set_path_value(target: Any, path: str, value: Any) -> None:
+def _set_path_value(target: object, path: str, value: object) -> None:
     segments = path.split(".")
     parent = target
     for segment in segments[:-1]:
@@ -1557,7 +1615,7 @@ def _sparkline(values: list[float]) -> str:
     return "".join(palette[round(((value - low) / (high - low)) * scale)] for value in values)
 
 
-def _to_float(value: Any, field_name: str) -> float:
+def _to_float(value: object, field_name: str) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{field_name} must be numeric")
     if isinstance(value, int | float):
@@ -1567,7 +1625,7 @@ def _to_float(value: Any, field_name: str) -> float:
     raise ValueError(f"{field_name} must be numeric")
 
 
-def _to_feature_value(value: str) -> Any:
+def _to_feature_value(value: str) -> object:
     lowered = value.lower()
     if lowered == "true":
         return True

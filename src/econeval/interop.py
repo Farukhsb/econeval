@@ -16,6 +16,7 @@ easy, so the rest of the check pipeline can stay unchanged.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Mapping
 from dataclasses import dataclass
 from statistics import mean
 from typing import Any
@@ -55,6 +56,7 @@ _CONVERGED_STATUSES = {
     "feasible",
     "ok",
 }
+FeatureMap = Mapping[str, float]
 
 
 @dataclass(slots=True)
@@ -67,7 +69,7 @@ class ModelRuntime:
     solve_method: str | None = None
     prediction_key: str | None = None
 
-    def predict(self, features: dict[str, float]) -> Any:
+    def predict(self, features: FeatureMap) -> Any:
         if self.predict_method:
             input_features = _prepare_prediction_input(self.model, features)
             return _summarize_prediction_output(
@@ -155,7 +157,7 @@ def _is_callable_attribute(model: Any, name: str) -> bool:
     return callable(candidate)
 
 
-def _invoke_bound_method(method: Any, features: dict[str, float] | None = None) -> Any:
+def _invoke_bound_method(method: Any, features: FeatureMap | None = None) -> Any:
     if features is None:
         return method()
     if _accepts_positional_argument(method):
@@ -163,7 +165,7 @@ def _invoke_bound_method(method: Any, features: dict[str, float] | None = None) 
     return method()
 
 
-def _invoke_callable(function: Any, features: dict[str, float]) -> Any:
+def _invoke_callable(function: Any, features: FeatureMap) -> Any:
     if _accepts_positional_argument(function):
         return function(features)
     return function()
@@ -193,7 +195,7 @@ def _extract_value(value: Any, key: str) -> Any | None:
     return None
 
 
-def _prepare_prediction_input(model: Any, features: dict[str, float]) -> Any:
+def _prepare_prediction_input(model: Any, features: FeatureMap) -> Any:
     if not _looks_like_tabular_model(model):
         return features
 
@@ -229,7 +231,7 @@ def _looks_like_tabular_model(model: Any) -> bool:
     )
 
 
-def _prediction_feature_names(model: Any, features: dict[str, float]) -> list[str]:
+def _prediction_feature_names(model: Any, features: FeatureMap) -> list[str]:
     candidates: list[str] = []
     for source in (
         getattr(model, "feature_names_in_", None),

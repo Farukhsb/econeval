@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from dataclasses import asdict
 from datetime import datetime, timezone
 from html import escape
@@ -201,6 +202,19 @@ def write_dashboard_report(path: str | Path, report: dict[str, Any]) -> None:
     output_path = Path(path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(_render_dashboard_report(report), encoding="utf-8")
+
+
+def write_pdf_report(path: str | Path, report: dict[str, Any]) -> None:
+    """Write a PDF report artifact to disk."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        from weasyprint import HTML
+    except ImportError as exc:  # pragma: no cover - dependency guard
+        raise RuntimeError("pdf reports require the optional 'weasyprint' dependency") from exc
+
+    HTML(string=_render_html_report(report)).write_pdf(str(output_path))
 
 
 def write_junit_report(path: str | Path, report: dict[str, Any]) -> None:
@@ -414,7 +428,7 @@ def _render_github_step_summary(report: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _render_markdown_item(section: str, item: dict[str, Any]) -> list[str]:
+def _render_markdown_item(section: str, item: Mapping[str, Any]) -> list[str]:
     lines = [f"- `{_item_name(section, item)}`: `{_item_status(section, item)}`"]
     for key, value in _item_details(section, item):
         lines.append(f"  - {key}: `{value}`")
@@ -423,7 +437,7 @@ def _render_markdown_item(section: str, item: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _render_markdown_comparison(comparison: dict[str, Any]) -> list[str]:
+def _render_markdown_comparison(comparison: Mapping[str, Any]) -> list[str]:
     lines = [
         f"- Baseline generated at: `{comparison.get('baseline_generated_at') or '-'}`",
         f"- Baseline project: `{comparison.get('baseline_project') or '-'}`",
@@ -454,7 +468,7 @@ def _render_markdown_comparison(comparison: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _render_html_report(report: dict[str, Any]) -> str:
+def _render_html_report(report: Mapping[str, Any]) -> str:
     sections = []
     for key, title in _REPORT_SECTIONS:
         items = report.get(key, [])
@@ -462,7 +476,9 @@ def _render_html_report(report: dict[str, Any]) -> str:
             continue
         rows = "".join(_render_html_item(key, item) for item in items)
         sections.append(
-            f"<section><h2>{escape(title)}s</h2><div class='cards'>{rows}</div></section>"
+            f"<details class='section' open>"
+            f"<summary>{escape(title)}s <span class='section-count'>{len(items)}</span></summary>"
+            f"<div class='cards'>{rows}</div></details>"
         )
     comparison = report.get("comparison")
     comparison_html = _render_html_comparison(comparison) if comparison else ""
@@ -477,6 +493,15 @@ def _render_html_report(report: dict[str, Any]) -> str:
         ".card,.stat{background:#fff;border:1px solid #e5e7eb;border-radius:12px;"
         "padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04);}"
         ".cards{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));}"
+        ".section{margin:0 0 16px;border:1px solid #e5e7eb;border-radius:14px;"
+        "background:#fff;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04);}"
+        ".section summary{list-style:none;cursor:pointer;padding:12px 16px;font-weight:700;"
+        "display:flex;align-items:center;justify-content:space-between;gap:12px;"
+        "background:#f8fafc}"
+        ".section summary::-webkit-details-marker{display:none}"
+        ".section .cards{padding:16px;border-top:1px solid #e5e7eb}"
+        ".section-count{font-size:0.85rem;font-weight:600;color:#4b5563;background:#e2e8f0;"
+        "padding:4px 8px;border-radius:999px}"
         ".status-pass{color:#166534}.status-warn{color:#b45309}.status-fail{color:#b91c1c}"
         ".status-error{color:#92400e}"
         ".state-summary{margin-top:8px;padding:10px;border-radius:10px;"
@@ -519,7 +544,7 @@ def _render_html_report(report: dict[str, Any]) -> str:
     return body
 
 
-def _render_dashboard_report(report: dict[str, Any]) -> str:
+def _render_dashboard_report(report: Mapping[str, Any]) -> str:
     overview = _dashboard_overview(report)
     spotlight = _failure_spotlight(report)
     top_failures = _top_failures_table(report)
@@ -651,7 +676,7 @@ def _render_dashboard_report(report: dict[str, Any]) -> str:
     return body
 
 
-def _render_html_comparison(comparison: dict[str, Any]) -> str:
+def _render_html_comparison(comparison: Mapping[str, Any]) -> str:
     rows = []
     for key in ("regressions", "improvements", "new_checks", "removed_checks"):
         items = comparison.get(key, [])
@@ -687,7 +712,7 @@ def _render_html_comparison(comparison: dict[str, Any]) -> str:
     return "<section><h2>Baseline Comparison</h2>" + "".join(rows) + "</section>"
 
 
-def _render_dashboard_comparison(comparison: dict[str, Any]) -> str:
+def _render_dashboard_comparison(comparison: Mapping[str, Any]) -> str:
     regressions = len(comparison.get("regressions", []))
     improvements = len(comparison.get("improvements", []))
     new_checks = len(comparison.get("new_checks", []))
@@ -713,7 +738,7 @@ def _render_dashboard_comparison(comparison: dict[str, Any]) -> str:
     )
 
 
-def _render_dashboard_comparison_list(title: str, items: list[dict[str, Any]]) -> str:
+def _render_dashboard_comparison_list(title: str, items: list[Mapping[str, Any]]) -> str:
     if not items:
         return ""
     lis = "".join(
@@ -756,7 +781,7 @@ def _render_dashboard_stat(label: str, value: Any) -> list[str]:
     ]
 
 
-def _render_html_item(section: str, item: dict[str, Any], anchor: str | None = None) -> str:
+def _render_html_item(section: str, item: Mapping[str, Any], anchor: str | None = None) -> str:
     card_id = f" id='{escape(anchor)}'" if anchor else ""
     search_terms = _dashboard_search_terms(section, item)
     body = [
@@ -778,13 +803,13 @@ def _render_html_item(section: str, item: dict[str, Any], anchor: str | None = N
     return "".join(body)
 
 
-def _item_name(section: str, item: dict[str, Any]) -> str:
+def _item_name(section: str, item: Mapping[str, Any]) -> str:
     if section == "issues":
         return item["stage"]
     return item["name"]
 
 
-def _item_status(section: str, item: dict[str, Any]) -> str:
+def _item_status(section: str, item: Mapping[str, Any]) -> str:
     if section == "issues":
         return "error"
     if section == "fairness_checks":
@@ -792,7 +817,7 @@ def _item_status(section: str, item: dict[str, Any]) -> str:
     return "pass" if item.get("passed", True) else "fail"
 
 
-def _item_details(section: str, item: dict[str, Any]) -> list[tuple[str, Any]]:
+def _item_details(section: str, item: Mapping[str, Any]) -> list[tuple[str, Any]]:
     labels = {
         "states": "initial states",
         "worst_state": "worst initial state",
@@ -897,7 +922,7 @@ def _dashboard_script() -> str:
     )
 
 
-def _dashboard_search_terms(section: str, item: dict[str, Any]) -> str:
+def _dashboard_search_terms(section: str, item: Mapping[str, Any]) -> str:
     parts = [_item_name(section, item), _item_status(section, item)]
     for key, value in _item_details(section, item):
         parts.append(f"{key} {value}")
@@ -906,7 +931,7 @@ def _dashboard_search_terms(section: str, item: dict[str, Any]) -> str:
     return " ".join(str(part) for part in parts if part not in (None, "", []))
 
 
-def _collect_failed_items(report: dict[str, Any]) -> list[dict[str, str]]:
+def _collect_failed_items(report: Mapping[str, Any]) -> list[dict[str, str]]:
     failures: list[dict[str, str]] = []
     for section, label in (
         ("invariants", "Invariant"),
@@ -950,7 +975,7 @@ def _collect_failed_items(report: dict[str, Any]) -> list[dict[str, str]]:
     return failures
 
 
-def _collect_all_items(report: dict[str, Any]) -> list[dict[str, str]]:
+def _collect_all_items(report: Mapping[str, Any]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for section, label in (
         ("invariants", "Invariant"),
@@ -996,7 +1021,7 @@ def _collect_all_items(report: dict[str, Any]) -> list[dict[str, str]]:
     return rows
 
 
-def _failure_margin(item: dict[str, Any]) -> str:
+def _failure_margin(item: Mapping[str, Any]) -> str:
     value = item.get("value")
     threshold = item.get("threshold")
     tolerance = item.get("tolerance")
@@ -1009,7 +1034,7 @@ def _failure_margin(item: dict[str, Any]) -> str:
     return f"value={value}"
 
 
-def _impacted_variables(item: dict[str, Any]) -> str:
+def _impacted_variables(item: Mapping[str, Any]) -> str:
     impacted: list[str] = []
     for key in (
         "worst_state",
@@ -1036,7 +1061,7 @@ def _impacted_variables(item: dict[str, Any]) -> str:
     return ", ".join(impacted)
 
 
-def _failure_details(item: dict[str, Any]) -> str:
+def _failure_details(item: Mapping[str, Any]) -> str:
     parts: list[str] = []
     for key in (
         "severity",
@@ -1065,7 +1090,7 @@ def _failure_details(item: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
-def _item_is_hard_failure(section: str, item: dict[str, Any]) -> bool:
+def _item_is_hard_failure(section: str, item: Mapping[str, Any]) -> bool:
     if section == "fairness_checks":
         if item.get("error"):
             return True
@@ -1077,7 +1102,7 @@ def _is_fairness_failure(result: FairnessResult) -> bool:
     return result.error is not None or result.severity == "fail"
 
 
-def _item_is_warning(section: str, item: dict[str, Any]) -> bool:
+def _item_is_warning(section: str, item: Mapping[str, Any]) -> bool:
     return section == "fairness_checks" and str(item.get("severity")) == "warn"
 
 
@@ -1089,9 +1114,9 @@ def _fairness_warning_count(report: dict[str, Any]) -> int:
 
 def _comparison_entry(
     section: str,
-    item: dict[str, Any],
+    item: Mapping[str, Any],
     change_type: str,
-    baseline_item: dict[str, Any] | None = None,
+    baseline_item: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     entry = {
         "section": section,
@@ -1110,7 +1135,7 @@ def _comparison_entry(
     return entry
 
 
-def _scan_values(item: dict[str, Any]) -> str:
+def _scan_values(item: Mapping[str, Any]) -> str:
     scan_inputs = item.get("scan_inputs")
     observations = item.get("observations")
     if not scan_inputs and not observations:
@@ -1123,7 +1148,7 @@ def _scan_values(item: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
-def _outcome_distribution(item: dict[str, Any]) -> str:
+def _outcome_distribution(item: Mapping[str, Any]) -> str:
     percentiles = item.get("percentiles")
     if not percentiles:
         return ""
@@ -1136,7 +1161,7 @@ def _outcome_distribution(item: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
-def _worst_sample(item: dict[str, Any]) -> str:
+def _worst_sample(item: Mapping[str, Any]) -> str:
     worst_sample = item.get("worst_sample")
     if not worst_sample:
         return ""
@@ -1163,7 +1188,7 @@ def _markdown_cell(value: Any) -> str:
     return text or "-"
 
 
-def _render_html_state_summary(section: str, item: dict[str, Any]) -> str:
+def _render_html_state_summary(section: str, item: Mapping[str, Any]) -> str:
     details = _item_details(section, item)
     if not details:
         return ""
@@ -1194,7 +1219,7 @@ def _render_html_kv_list(items: list[tuple[str, Any]]) -> str:
     )
 
 
-def _dashboard_pass_rate(report: dict[str, Any]) -> str:
+def _dashboard_pass_rate(report: Mapping[str, Any]) -> str:
     total = report["summary"]["total"]
     passed = report["summary"]["passed"]
     if total == 0:
@@ -1202,7 +1227,7 @@ def _dashboard_pass_rate(report: dict[str, Any]) -> str:
     return f"{(passed / total) * 100:.0f}%"
 
 
-def _dashboard_overview(report: dict[str, Any]) -> str:
+def _dashboard_overview(report: Mapping[str, Any]) -> str:
     counts = []
     for key, title in _REPORT_SECTIONS:
         items = report.get(key, [])
@@ -1247,7 +1272,7 @@ def _dashboard_overview(report: dict[str, Any]) -> str:
     return "".join(["<h2>Section Overview</h2><div class='cards'>", "".join(cards), "</div>"])
 
 
-def _failure_spotlight(report: dict[str, Any]) -> str:
+def _failure_spotlight(report: Mapping[str, Any]) -> str:
     failures = _collect_failed_items(report)
     if not failures:
         return "<p class='meta'>No failures.</p>"
@@ -1267,7 +1292,7 @@ def _failure_spotlight(report: dict[str, Any]) -> str:
     return f"<ol>{''.join(items)}</ol>"
 
 
-def _top_failures_table(report: dict[str, Any]) -> str:
+def _top_failures_table(report: Mapping[str, Any]) -> str:
     failures = _collect_failed_items(report)
     if not failures:
         return "<p class='meta'>No failures.</p>"

@@ -371,8 +371,8 @@ def _evaluate_numexpr(
 ) -> Any:
     try:
         import numexpr as ne
-    except ImportError:
-        return _evaluate_python_ast_tree(tree, context)
+    except ImportError as exc:
+        raise RuntimeError("numexpr is required for numeric expression evaluation") from exc
 
     try:
         return ne.evaluate(expression, local_dict=context)

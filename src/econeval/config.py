@@ -107,16 +107,10 @@ class EconomicDriftTest(BaseModel):
 
 
 class EconomicCheck(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
     name: str = Field(min_length=1)
-    kind: Literal[
-        "accounting_identity",
-        "monotonicity",
-        "boundary_condition",
-        "convergence",
-        "scan",
-    ]
+    kind: str = Field(min_length=1)
     left_expression: str | None = None
     right_expression: str | None = None
     expression: str | None = None
@@ -176,16 +170,6 @@ class EconomicCheck(BaseModel):
                 raise ValueError("scan checks require expected_direction")
             if self.perturbations is None or not self.perturbations:
                 raise ValueError("scan checks require at least one perturbation")
-        if self.kind == "monte_carlo":
-            if any(cutoff < 0 or cutoff > 100 for cutoff in self.percentile_cutoffs):
-                raise ValueError("monte carlo percentile_cutoffs must be between 0 and 100")
-            if any(
-                later <= earlier
-                for earlier, later in zip(
-                    self.percentile_cutoffs, self.percentile_cutoffs[1:], strict=False
-                )
-            ):
-                raise ValueError("monte carlo percentile_cutoffs must be strictly increasing")
         return self
 
 

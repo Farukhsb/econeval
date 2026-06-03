@@ -1,4 +1,8 @@
+import sys
+import types
 from pathlib import Path
+
+import pytest
 
 from econeval.config import EconEvalConfig, FairnessConfig, InvariantRule
 from econeval.errors import ExecutionIssue
@@ -12,6 +16,7 @@ from econeval.reporting import (
     write_json_report,
     write_junit_report,
     write_markdown_report,
+    write_pdf_report,
 )
 from econeval.scenarios import (
     DriftResult,
@@ -407,13 +412,18 @@ def test_write_markdown_report_includes_fairness_severity(tmp_path: Path) -> Non
 
 def test_write_html_report_writes_text(tmp_path: Path) -> None:
     report_path = tmp_path / "artifacts" / "econeval-report.html"
-    report = build_json_report(EconEvalConfig(project="demo-model"), [])
+    report = build_json_report(
+        EconEvalConfig(project="demo-model"),
+        [InvariantResult(name="elasticity", expression="model.elasticity < 0", passed=True)],
+    )
 
     write_html_report(report_path, report)
 
     text = report_path.read_text(encoding="utf-8")
     assert "<!doctype html>" in text.lower()
     assert "econeval report" in text.lower()
+    assert "details class='section'" in text
+    assert "section-count" in text
 
 
 def test_write_html_report_includes_state_summary(tmp_path: Path) -> None:
@@ -442,6 +452,55 @@ def test_write_html_report_includes_state_summary(tmp_path: Path) -> None:
     assert "State Summary" in text
     assert "worst initial state" in text
     assert "state-summary" in text
+    assert "details class='section'" in text
+
+
+def test_write_html_report_handles_large_batch(tmp_path: Path) -> None:
+    report_path = tmp_path / "artifacts" / "econeval-report.html"
+    report = build_json_report(
+        EconEvalConfig(project="demo-model"),
+        [
+            InvariantResult(
+                name=f"elasticity_{idx}",
+                expression="model.elasticity < 0",
+                passed=True,
+            )
+            for idx in range(100)
+        ],
+    )
+
+    write_html_report(report_path, report)
+
+    text = report_path.read_text(encoding="utf-8")
+    assert text.count("details class='section'") == 1
+    assert "elasticity_99" in text
+
+
+def test_write_pdf_report_uses_optional_backend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeHTML:
+        def __init__(self, string: str) -> None:
+            captured["html"] = string
+
+        def write_pdf(self, target: str) -> None:
+            Path(target).write_bytes(b"%PDF-1.4\n% fake pdf\n")
+            captured["target"] = target
+
+    fake_module = types.SimpleNamespace(HTML=FakeHTML)
+    monkeypatch.setitem(sys.modules, "weasyprint", fake_module)
+
+    report = build_json_report(EconEvalConfig(project="demo-model"), [])
+    report_path = tmp_path / "artifacts" / "econeval-report.pdf"
+
+    write_pdf_report(report_path, report)
+
+    assert report_path.exists()
+    assert report_path.read_bytes().startswith(b"%PDF-1.4")
+    assert "EconEval Report" in captured["html"]
+    assert captured["target"] == str(report_path)
 
 
 def test_write_dashboard_report_includes_overview_and_spotlight(tmp_path: Path) -> None:

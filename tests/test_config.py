@@ -48,8 +48,9 @@ def test_load_config_reads_policy_example_file() -> None:
     config = load_config("examples/policy_model/econeval.yml")
 
     assert config.project == "policy-model"
-    assert len(config.invariants) == 1
+    assert len(config.invariants) == 3
     assert len(config.stress_tests) == 1
+    assert len(config.economic_checks) == 1
     assert config.fairness.enabled is True
     assert config.fairness.metrics == [
         "demographic_parity_difference",
