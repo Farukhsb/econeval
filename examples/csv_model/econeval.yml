@@ -8,4 +8,3 @@ stress_tests:
     output_dataset: data/output.csv
     join_key: id
     expression: output.revenue == input.price * input.quantity
-

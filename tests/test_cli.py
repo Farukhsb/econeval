@@ -6,7 +6,18 @@ from pathlib import Path
 
 import pytest
 
-from econeval.cli import run_cli
+from econeval.cli import (
+    _build_logger,
+    _load_baseline_report,
+    _path_state,
+    _print_failure,
+    _print_summary,
+    _snapshot_watch_state,
+    _wait_for_watch_change,
+    _watch_paths,
+    load_model_class,
+    run_cli,
+)
 
 
 def test_cli_entrypoint_runs_via_subprocess(tmp_path: Path) -> None:
@@ -62,6 +73,203 @@ def test_run_cli_writes_report(tmp_path: Path) -> None:
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["project"] == "basic-model"
     assert payload["summary"]["status"] == "pass"
+
+
+def test_run_cli_requires_model_for_model_based_checks(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    report_path = tmp_path / "missing-model-report.json"
+    config_path = root / "examples" / "basic_model" / "econeval.yml"
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["status"] == "fail"
+    assert payload["issues"][0]["stage"] == "model"
+    assert "requires --model" in payload["issues"][0]["message"]
+
+
+def test_run_cli_reports_missing_model_file(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    report_path = tmp_path / "missing-file-report.json"
+    config_path = root / "examples" / "basic_model" / "econeval.yml"
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--model",
+            str(tmp_path / "missing_model.py"),
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["status"] == "fail"
+    assert payload["issues"][0]["stage"] == "model"
+    assert "model file not found" in payload["issues"][0]["message"]
+
+
+def test_run_cli_reports_missing_baseline_report(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    report_path = tmp_path / "baseline-error-report.json"
+    config_path = root / "examples" / "basic_model" / "econeval.yml"
+    model_path = root / "examples" / "basic_model" / "model.py"
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--model",
+            str(model_path),
+            "--class",
+            "DemoModel",
+            "--report",
+            str(report_path),
+            "--baseline-report",
+            str(tmp_path / "missing-baseline.json"),
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["status"] == "fail"
+    assert payload["comparison_error"] is not None
+    assert payload["issues"][0]["stage"] == "baseline_report"
+
+
+def test_load_model_class_raises_for_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="model file not found"):
+        load_model_class(tmp_path / "missing_model.py", "DemoModel")
+
+
+def test_load_model_class_raises_for_invalid_spec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_path = tmp_path / "example_model.py"
+    model_path.write_text(
+        "class ExampleModel:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    class FakeSpec:
+        loader = None
+
+    monkeypatch.setattr(
+        "econeval.cli.importlib.util.spec_from_file_location", lambda *args: FakeSpec()
+    )
+
+    with pytest.raises(ValueError, match="could not load model file"):
+        load_model_class(model_path, "ExampleModel")
+
+
+def test_load_model_class_raises_for_missing_class(tmp_path: Path) -> None:
+    model_path = tmp_path / "example_model.py"
+    model_path.write_text(
+        "class ExampleModel:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="class 'MissingModel' not found"):
+        load_model_class(model_path, "MissingModel")
+
+
+def test_watch_helpers_cover_paths_and_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("project: demo\n", encoding="utf-8")
+    model_path = tmp_path / "model.py"
+    model_path.write_text("class DemoModel:\n    pass\n", encoding="utf-8")
+
+    args = type(
+        "Args",
+        (),
+        {"config": str(config_path), "model": str(model_path), "watch_interval": 0.1},
+    )()
+
+    assert callable(_build_logger(verbose=True, quiet=False))
+    watched_paths = _watch_paths(args)
+    assert watched_paths == [config_path.resolve(), model_path.resolve()]
+    state = _snapshot_watch_state(watched_paths)
+    assert config_path.resolve() in state
+    assert _path_state(tmp_path / "missing.txt") is None
+
+    states = {
+        watched_paths[0]: [
+            state[watched_paths[0]],
+            (state[watched_paths[0]][0] + 1, state[watched_paths[0]][1]),
+        ],
+        watched_paths[1]: [state[watched_paths[1]], state[watched_paths[1]]],
+    }
+
+    def fake_path_state(path: Path):
+        values = states[path]
+        return values.pop(0) if values else state[path]
+
+    calls: list[float] = []
+
+    def fake_sleep(value: float) -> None:
+        calls.append(value)
+
+    monkeypatch.setattr("econeval.cli._path_state", fake_path_state)
+    monkeypatch.setattr("econeval.cli.time.sleep", fake_sleep)
+    _wait_for_watch_change(watched_paths, {path: state[path] for path in watched_paths}, 0.0)
+    assert calls == [0.1]
+
+
+def test_run_cli_accepts_optional_model_for_relation_config(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    report_path = tmp_path / "csv-with-model-report.json"
+    config_path = root / "examples" / "csv_model" / "econeval.yml"
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--model",
+            str(tmp_path / "missing_model.py"),
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["status"] == "fail"
+    assert payload["issues"][0]["stage"] == "model"
+
+
+def test_load_baseline_report_raises_for_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="baseline report not found"):
+        _load_baseline_report(tmp_path / "missing-baseline.json")
+
+
+def test_logger_helpers_and_summary_helpers(capsys: pytest.CaptureFixture[str]) -> None:
+    quiet_logger = _build_logger(verbose=False, quiet=True)
+    verbose_logger = _build_logger(verbose=True, quiet=False)
+
+    quiet_logger("suppressed")
+    verbose_logger("visible")
+    _print_summary("pass", 2, 2, quiet=False, report_format="json")
+    _print_summary("pass", 2, 2, quiet=True, report_format="json")
+    _print_failure("model load", RuntimeError("boom"), quiet=False)
+    _print_failure("model load", RuntimeError("boom"), quiet=True)
+
+    output = capsys.readouterr().out
+    assert "[econeval] visible" in output
+    assert "EconEval: pass (2/2 checks passed, format=json)" in output
+    assert "EconEval: fail (model load: boom)" in output
+    assert "suppressed" not in output
 
 
 def test_run_cli_supports_model_less_csv_relations(tmp_path: Path) -> None:
