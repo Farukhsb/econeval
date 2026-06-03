@@ -49,9 +49,7 @@ def test_extract_pull_request_parses_common_merge_messages() -> None:
     assert _extract_pull_request("plain commit message") is None
 
 
-def test_collect_invariant_blame_uses_matching_model_lines(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_collect_invariant_blame_uses_matching_model_lines(tmp_path: Path, monkeypatch) -> None:
     module_path = tmp_path / "model_for_traceability.py"
     module_path.write_text(
         "\n".join(
@@ -72,16 +70,18 @@ def test_collect_invariant_blame_uses_matching_model_lines(
     monkeypatch.setattr("econeval.traceability._git_root", lambda path: tmp_path)
     monkeypatch.setattr(
         "econeval.traceability._git_blame_line",
-        lambda root, source_path, line: BlameEntry(
-            path=str(Path(source_path).relative_to(root)),
-            line=line,
-            commit="abc123def456",
-            author="Ada Lovelace",
-            summary="Tune elasticity rule",
-            pull_request=42,
-        )
-        if line == 3
-        else None,
+        lambda root, source_path, line: (
+            BlameEntry(
+                path=str(Path(source_path).relative_to(root)),
+                line=line,
+                commit="abc123def456",
+                author="Ada Lovelace",
+                summary="Tune elasticity rule",
+                pull_request=42,
+            )
+            if line == 3
+            else None
+        ),
     )
 
     entries = collect_invariant_blame(model, rule)
