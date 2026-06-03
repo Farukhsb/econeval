@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
 
 jobs:
@@ -36,4 +38,3 @@ jobs:
         with:
           name: econeval-report
           path: econeval-report.json
-
