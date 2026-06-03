@@ -250,8 +250,8 @@ econeval --config examples/basic_model/econeval.yml --model examples/basic_model
 econeval --watch --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report econeval-report.json
 ```
 
-For extra traceability on failed invariants, add `--blame`. EconEval will attempt to
-git-blame the model source lines that look related to the failure and include the
+For extra traceability on failed invariants, add `--blame`. EconEval will try to run
+`git blame` on the model lines that look related to the failure and include the
 commit metadata in the report.
 
 ```bash
@@ -417,13 +417,13 @@ There is also a Julia wrapper in [bridges/julia/econeval_bridge.jl](bridges/juli
 
 ## Roadmap
 
-- more model-less CSV relation checks and wrappers for R/Stata/Julia
+- richer traceability and failure explanations
 - deeper drift comparison and alerting
 - richer fairness configuration and reporting
 - more real-world examples and benchmark coverage
 - deeper interop with tools like `PyMC`, `GAMS`, and Julia
-- install `econeval[stats]` for the optional `statsmodels`-based drift helper
-- use `--format dashboard` for a richer HTML overview with filtering and collapsible drill-downs
+- optional `statsmodels`-based drift helper via `econeval[stats]`
+- dashboard polish with filtering and collapsible drill-downs
 
 ## Release Flow
 
