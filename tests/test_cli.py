@@ -157,8 +157,7 @@ def test_load_model_class_raises_for_invalid_spec(
 ) -> None:
     model_path = tmp_path / "example_model.py"
     model_path.write_text(
-        "class ExampleModel:\n"
-        "    pass\n",
+        "class ExampleModel:\n    pass\n",
         encoding="utf-8",
     )
 
@@ -176,8 +175,7 @@ def test_load_model_class_raises_for_invalid_spec(
 def test_load_model_class_raises_for_missing_class(tmp_path: Path) -> None:
     model_path = tmp_path / "example_model.py"
     model_path.write_text(
-        "class ExampleModel:\n"
-        "    pass\n",
+        "class ExampleModel:\n    pass\n",
         encoding="utf-8",
     )
 
