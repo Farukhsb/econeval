@@ -90,6 +90,15 @@ econeval/
     basic_model/
       model.py
       econeval.yml
+    drift_model/
+      model.py
+      econeval.yml
+    fairness_model/
+      model.py
+      econeval.yml
+    broken_model/
+      model.py
+      econeval.yml
   src/
     econeval/
       __init__.py
@@ -143,6 +152,13 @@ Example invariant rule:
 If the expression returns `False`, the invariant fails.
 
 The JSON report includes the project name, a summary count, and the result of each invariant, stress test, drift check, and fairness check.
+
+## Examples
+
+- `examples/basic_model` shows the happy path with invariants, stress tests, drift checks, and fairness checks.
+- `examples/broken_model` shows a model and dataset that fail the checks.
+- `examples/drift_model` focuses on drift validation.
+- `examples/fairness_model` focuses on fairness checks and a simple stress test.
 
 ## Release Flow
 

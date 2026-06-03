@@ -52,3 +52,23 @@ def test_run_cli_returns_nonzero_for_broken_example(tmp_path: Path) -> None:
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["project"] == "broken-model"
     assert payload["summary"]["status"] == "fail"
+
+
+def test_run_cli_writes_structured_config_error(tmp_path: Path) -> None:
+    report_path = tmp_path / "config-error-report.json"
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(tmp_path / "missing.yml"),
+            "--model",
+            str(tmp_path / "missing_model.py"),
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["status"] == "fail"
+    assert payload["issues"][0]["stage"] == "config"

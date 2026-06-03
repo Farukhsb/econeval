@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from .config import load_config
+from .errors import ExecutionIssue
 from .invariants import run_invariant_suite, suite_passed
 from .reporting import build_json_report, write_json_report
 from .scenarios import (
@@ -60,9 +61,40 @@ def load_model_class(model_path: str | Path, class_name: str):
 def run_cli(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    config = load_config(args.config)
-    model_class = load_model_class(args.model, args.class_name)
-    model = model_class()
+    issues: list[ExecutionIssue] = []
+
+    try:
+        config = load_config(args.config)
+    except Exception as exc:
+        issues.append(ExecutionIssue(stage="config", message=str(exc), detail=str(args.config)))
+        report = build_json_report(
+            config=_placeholder_config(),
+            results=[],
+            scenario_results=[],
+            drift_results=[],
+            fairness_results=[],
+            issues=issues,
+        )
+        write_json_report(args.report, report)
+        print(f"EconEval: fail (config error: {exc})")
+        return 1
+
+    try:
+        model_class = load_model_class(args.model, args.class_name)
+        model = model_class()
+    except Exception as exc:
+        issues.append(ExecutionIssue(stage="model", message=str(exc), detail=str(args.model)))
+        report = build_json_report(
+            config=config,
+            results=[],
+            scenario_results=[],
+            drift_results=[],
+            fairness_results=[],
+            issues=issues,
+        )
+        write_json_report(args.report, report)
+        print(f"EconEval: fail (model error: {exc})")
+        return 1
 
     results = run_invariant_suite(model, config.invariants)
     scenario_results = run_stress_suite(model, config.stress_tests, base_path=Path(args.config).parent)
@@ -90,6 +122,12 @@ def run_cli(argv: list[str] | None = None) -> int:
         and drift_suite_passed(drift_results)
         and fairness_suite_passed(fairness_results)
     ) else 1
+
+
+def _placeholder_config():
+    from .config import EconEvalConfig
+
+    return EconEvalConfig(project="unavailable")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -1,0 +1,18 @@
+project: drift-model
+version: 1
+
+invariants:
+  - name: elasticity_must_be_negative
+    expression: model.elasticity < 0
+
+drift_tests:
+  - name: demand_signal_shift
+    baseline_dataset: data/baseline.csv
+    dataset: data/current.csv
+    feature: shock
+    threshold: 0.05
+
+fairness:
+  enabled: false
+  metrics: []
+

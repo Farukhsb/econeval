@@ -2,6 +2,7 @@
 
 from .cli import main, run_cli
 from .config import DriftTest, EconEvalConfig, FairnessConfig, InvariantRule, StressTest, load_config
+from .errors import ExecutionIssue
 from .invariants import InvariantResult, run_invariant, run_invariant_suite, suite_passed
 from .reporting import build_json_report, write_json_report
 from .scenarios import DriftResult, FairnessResult, ScenarioResult, run_drift_suite, run_fairness_checks, run_scenario, run_stress_suite
@@ -12,6 +13,7 @@ __all__ = [
     "EconEvalConfig",
     "InvariantResult",
     "InvariantRule",
+    "ExecutionIssue",
     "DriftResult",
     "DriftTest",
     "FairnessConfig",

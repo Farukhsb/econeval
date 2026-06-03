@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from econeval.config import DriftTest, EconEvalConfig, FairnessConfig, InvariantRule
+from econeval.errors import ExecutionIssue
 from econeval.invariants import InvariantResult
 from econeval.reporting import build_json_report, write_json_report
 from econeval.scenarios import DriftResult, FairnessResult, ScenarioResult
@@ -82,6 +83,19 @@ def test_build_json_report_includes_drift_and_fairness_results() -> None:
     assert report["summary"]["status"] == "pass"
     assert len(report["drift_checks"]) == 1
     assert len(report["fairness_checks"]) == 1
+
+
+def test_build_json_report_includes_issues() -> None:
+    config = EconEvalConfig(project="demo-model")
+    report = build_json_report(
+        config,
+        [],
+        issues=[ExecutionIssue(stage="config", message="missing config")],
+    )
+
+    assert report["summary"]["failed"] == 1
+    assert report["summary"]["status"] == "fail"
+    assert report["issues"][0]["stage"] == "config"
 
 
 def test_write_json_report_creates_parent_directories(tmp_path: Path) -> None:

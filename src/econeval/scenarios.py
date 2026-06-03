@@ -21,6 +21,7 @@ class ScenarioResult:
     value: float
     passed: bool
     error: str | None = None
+    error_type: str | None = None
 
 
 @dataclass(slots=True)
@@ -33,6 +34,7 @@ class DriftResult:
     value: float
     passed: bool
     error: str | None = None
+    error_type: str | None = None
 
 
 @dataclass(slots=True)
@@ -44,6 +46,7 @@ class FairnessResult:
     value: float
     passed: bool
     error: str | None = None
+    error_type: str | None = None
 
 
 def run_scenario(name: str) -> dict[str, object]:
@@ -95,6 +98,7 @@ def run_stress_test(model: Any, test: StressTest, base_path: str | Path | None =
             value=math.inf,
             passed=False,
             error=str(exc),
+            error_type="dataset_or_metric",
         )
 
 
@@ -131,6 +135,7 @@ def run_drift_test(test: DriftTest, base_path: str | Path | None = None) -> Drif
             value=math.inf,
             passed=False,
             error=str(exc),
+            error_type="drift",
         )
 
 
@@ -202,6 +207,7 @@ def run_fairness_checks(
                 value=math.inf,
                 passed=False,
                 error=str(exc),
+                error_type="fairness",
             )
             for metric in metrics
         ]
@@ -291,4 +297,3 @@ def _to_feature_value(value: str) -> Any:
         return int(value)
     except ValueError:
         return value
-

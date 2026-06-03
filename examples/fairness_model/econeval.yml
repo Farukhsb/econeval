@@ -1,0 +1,22 @@
+project: fairness-model
+version: 1
+
+invariants:
+  - name: elasticity_must_be_negative
+    expression: model.elasticity < 0
+
+stress_tests:
+  - name: steady_state_check
+    dataset: data/steady_state.csv
+    metric: mape
+    threshold: 0.1
+
+fairness:
+  enabled: true
+  dataset: data/fairness.csv
+  group_column: group
+  positive_threshold: 1.5
+  metrics:
+    - demographic_parity_difference
+    - disparate_impact_ratio
+
