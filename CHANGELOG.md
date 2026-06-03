@@ -12,6 +12,12 @@ Releases follow semantic versioning:
 
 - No unreleased changes yet.
 
+## v0.5.0
+
+- Added traceability mode for failed invariants, including optional git blame metadata in reports.
+- Surfaced invariant evaluation values and traces in JSON, Markdown, HTML, and dashboard outputs.
+- Added a CLI `--blame` flag and focused tests for the traceability path.
+
 ## v0.4.0
 
 - Added a safer numeric expression path with static validation and clearer failures.
