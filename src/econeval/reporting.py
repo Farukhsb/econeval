@@ -108,6 +108,61 @@ def build_json_report(
     }
 
 
+def build_report_comparison(
+    current_report: dict[str, Any],
+    baseline_report: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarize how the current report differs from a baseline report."""
+
+    sections = [section for section, _ in _REPORT_SECTIONS if section != "issues"]
+    baseline_summary = baseline_report.get("summary", {})
+    summary_delta = {
+        key: int(current_report["summary"].get(key, 0)) - int(baseline_summary.get(key, 0))
+        for key in ("total", "passed", "failed")
+    }
+
+    regressions: list[dict[str, Any]] = []
+    improvements: list[dict[str, Any]] = []
+    new_checks: list[dict[str, Any]] = []
+    removed_checks: list[dict[str, Any]] = []
+
+    for section in sections:
+        current_items = {item.get("name"): item for item in current_report.get(section, [])}
+        baseline_items = {item.get("name"): item for item in baseline_report.get(section, [])}
+        for name in sorted(set(current_items) | set(baseline_items), key=lambda value: str(value)):
+            current_item = current_items.get(name)
+            baseline_item = baseline_items.get(name)
+            if current_item is None and baseline_item is None:
+                continue
+            if current_item is None:
+                removed_checks.append(_comparison_entry(section, baseline_item, "removed"))
+                continue
+            if baseline_item is None:
+                new_checks.append(_comparison_entry(section, current_item, "new"))
+                continue
+
+            current_passed = not _item_is_hard_failure(section, current_item)
+            baseline_passed = not _item_is_hard_failure(section, baseline_item)
+            if baseline_passed and not current_passed:
+                regressions.append(
+                    _comparison_entry(section, current_item, "regression", baseline_item)
+                )
+            elif not baseline_passed and current_passed:
+                improvements.append(
+                    _comparison_entry(section, current_item, "improvement", baseline_item)
+                )
+
+    return {
+        "baseline_generated_at": baseline_report.get("generated_at"),
+        "baseline_project": baseline_report.get("project"),
+        "summary_delta": summary_delta,
+        "regressions": regressions,
+        "improvements": improvements,
+        "new_checks": new_checks,
+        "removed_checks": removed_checks,
+    }
+
+
 def write_json_report(path: str | Path, report: dict[str, Any]) -> None:
     """Write a report artifact to disk."""
 
@@ -262,6 +317,11 @@ def _render_markdown_report(report: dict[str, Any]) -> str:
         for item in items:
             lines.extend(_render_markdown_item(key, item))
 
+    comparison = report.get("comparison")
+    if comparison:
+        lines.extend(["", "## Baseline Comparison", ""])
+        lines.extend(_render_markdown_comparison(comparison))
+
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -363,6 +423,37 @@ def _render_markdown_item(section: str, item: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _render_markdown_comparison(comparison: dict[str, Any]) -> list[str]:
+    lines = [
+        f"- Baseline generated at: `{comparison.get('baseline_generated_at') or '-'}`",
+        f"- Baseline project: `{comparison.get('baseline_project') or '-'}`",
+        (
+            "- Summary delta: "
+            f"`total={comparison.get('summary_delta', {}).get('total', 0)}`, "
+            f"`passed={comparison.get('summary_delta', {}).get('passed', 0)}`, "
+            f"`failed={comparison.get('summary_delta', {}).get('failed', 0)}`"
+        ),
+    ]
+    for key in ("regressions", "improvements", "new_checks", "removed_checks"):
+        items = comparison.get(key, [])
+        lines.append("")
+        lines.append(f"### {key.replace('_', ' ').title()}")
+        if not items:
+            lines.append("No entries.")
+            continue
+        for item in items:
+            detail = item.get("current_detail") or item.get("baseline_detail") or "-"
+            baseline_status = item.get("baseline_status")
+            current_status = item.get("current_status")
+            status = current_status if current_status is not None else baseline_status
+            lines.append(
+                f"- `{item.get('section')}` / `{item.get('name')}`: `{status}` "
+                f"({item.get('change_type')})"
+            )
+            lines.append(f"  - detail: `{detail}`")
+    return lines
+
+
 def _render_html_report(report: dict[str, Any]) -> str:
     sections = []
     for key, title in _REPORT_SECTIONS:
@@ -373,6 +464,8 @@ def _render_html_report(report: dict[str, Any]) -> str:
         sections.append(
             f"<section><h2>{escape(title)}s</h2><div class='cards'>{rows}</div></section>"
         )
+    comparison = report.get("comparison")
+    comparison_html = _render_html_comparison(comparison) if comparison else ""
 
     styles = (
         "body{font-family:Arial,sans-serif;max-width:960px;margin:32px auto;"
@@ -419,6 +512,7 @@ def _render_html_report(report: dict[str, Any]) -> str:
             "</div>",
             "<h2>Checks</h2>",
             "".join(sections),
+            comparison_html,
             "</body></html>",
         ]
     )
@@ -431,6 +525,8 @@ def _render_dashboard_report(report: dict[str, Any]) -> str:
     top_failures = _top_failures_table(report)
     controls = _dashboard_controls()
     fairness_warnings = _fairness_warning_count(report)
+    comparison = report.get("comparison")
+    comparison_html = _render_dashboard_comparison(comparison) if comparison else ""
     sections = []
     for key, title in _REPORT_SECTIONS:
         items = report.get(key, [])
@@ -538,6 +634,7 @@ def _render_dashboard_report(report: dict[str, Any]) -> str:
             "<h2>Top Failures</h2>",
             top_failures,
             "</div>",
+            comparison_html,
             "<h2>Sections</h2>",
             "<div class='section-index'>",
             "".join(
@@ -552,6 +649,99 @@ def _render_dashboard_report(report: dict[str, Any]) -> str:
         ]
     )
     return body
+
+
+def _render_html_comparison(comparison: dict[str, Any]) -> str:
+    rows = []
+    for key in ("regressions", "improvements", "new_checks", "removed_checks"):
+        items = comparison.get(key, [])
+        if not items:
+            continue
+        body = "".join(
+            "".join(
+                [
+                    "<li>",
+                    f"<strong>{escape(item.get('section', ''))}:</strong> ",
+                    f"{escape(item.get('name', ''))}",
+                    f"<div class='meta'>{escape(item.get('change_type', ''))} | ",
+                    f"current={escape(str(item.get('current_status', '')))}",
+                    (
+                        f" | baseline={escape(str(item.get('baseline_status', '')))}"
+                        if item.get("baseline_status") is not None
+                        else ""
+                    ),
+                    "</div>",
+                    "</li>",
+                ]
+            )
+            for item in items
+        )
+        rows.append(
+            "<details class='section'><summary>"
+            f"{escape(key.replace('_', ' ').title())} "
+            f"<span class='section-count'>{len(items)}</span></summary>"
+            f"<div class='spotlight'><ol>{body}</ol></div></details>"
+        )
+    if not rows:
+        return ""
+    return "<section><h2>Baseline Comparison</h2>" + "".join(rows) + "</section>"
+
+
+def _render_dashboard_comparison(comparison: dict[str, Any]) -> str:
+    regressions = len(comparison.get("regressions", []))
+    improvements = len(comparison.get("improvements", []))
+    new_checks = len(comparison.get("new_checks", []))
+    removed_checks = len(comparison.get("removed_checks", []))
+    return "".join(
+        [
+            "<div class='spotlight'>",
+            "<h2>Baseline Comparison</h2>",
+            "<div class='grid overview'>",
+            *_render_dashboard_stat("Regressions", regressions),
+            *_render_dashboard_stat("Improvements", improvements),
+            *_render_dashboard_stat("New checks", new_checks),
+            *_render_dashboard_stat("Removed checks", removed_checks),
+            "</div>",
+            _render_dashboard_comparison_list("Regressions", comparison.get("regressions", [])),
+            _render_dashboard_comparison_list("Improvements", comparison.get("improvements", [])),
+            _render_dashboard_comparison_list("New Checks", comparison.get("new_checks", [])),
+            _render_dashboard_comparison_list(
+                "Removed Checks", comparison.get("removed_checks", [])
+            ),
+            "</div>",
+        ]
+    )
+
+
+def _render_dashboard_comparison_list(title: str, items: list[dict[str, Any]]) -> str:
+    if not items:
+        return ""
+    lis = "".join(
+        "".join(
+            [
+                "<li>",
+                (
+                    f"<strong>{escape(item.get('section', ''))}:</strong> "
+                    f"{escape(item.get('name', ''))}"
+                ),
+                f"<div class='meta'>{escape(item.get('change_type', ''))} | ",
+                f"current={escape(str(item.get('current_status', '')))}",
+                (
+                    f" | baseline={escape(str(item.get('baseline_status', '')))}"
+                    if item.get("baseline_status") is not None
+                    else ""
+                ),
+                "</div>",
+                "</li>",
+            ]
+        )
+        for item in items[:8]
+    )
+    return (
+        "<details class='section'><summary>"
+        f"{escape(title)} <span class='section-count'>{len(items)}</span></summary>"
+        f"<div class='spotlight'><ol>{lis}</ol></div></details>"
+    )
 
 
 def _render_html_stat(label: str, value: Any) -> list[str]:
@@ -895,6 +1085,29 @@ def _fairness_warning_count(report: dict[str, Any]) -> int:
     return sum(
         1 for item in report.get("fairness_checks", []) if str(item.get("severity")) == "warn"
     )
+
+
+def _comparison_entry(
+    section: str,
+    item: dict[str, Any],
+    change_type: str,
+    baseline_item: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    entry = {
+        "section": section,
+        "name": str(item.get("name", "")),
+        "change_type": change_type,
+        "current_status": _item_status(section, item),
+        "current_detail": _failure_details(item),
+    }
+    if baseline_item is not None:
+        entry.update(
+            {
+                "baseline_status": _item_status(section, baseline_item),
+                "baseline_detail": _failure_details(baseline_item),
+            }
+        )
+    return entry
 
 
 def _scan_values(item: dict[str, Any]) -> str:

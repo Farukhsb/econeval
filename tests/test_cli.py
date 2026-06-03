@@ -145,6 +145,61 @@ def test_run_cli_writes_structured_config_error(tmp_path: Path) -> None:
     assert payload["issues"][0]["stage"] == "config"
 
 
+def test_run_cli_comparison_against_baseline_report(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    report_path = tmp_path / "current-report.json"
+    baseline_path = tmp_path / "baseline-report.json"
+    config_path = root / "examples" / "basic_model" / "econeval.yml"
+    model_path = root / "examples" / "basic_model" / "model.py"
+
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "project": "basic-model",
+                "generated_at": "2026-05-03T00:00:00Z",
+                "summary": {"total": 2, "passed": 2, "failed": 0, "status": "pass"},
+                "invariants": [
+                    {
+                        "name": "elasticity_must_be_negative",
+                        "passed": True,
+                        "detail": None,
+                        "error": None,
+                    }
+                ],
+                "economic_checks": [],
+                "economic_drift_checks": [],
+                "stress_tests": [],
+                "drift_checks": [],
+                "fairness_checks": [],
+                "issues": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--model",
+            str(model_path),
+            "--class",
+            "DemoModel",
+            "--report",
+            str(report_path),
+            "--baseline-report",
+            str(baseline_path),
+        ]
+    )
+
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert payload["summary"]["status"] == "pass"
+    assert payload["comparison"]["baseline_project"] == "basic-model"
+    assert payload["comparison"]["summary_delta"]["total"] >= 0
+
+
 def test_run_cli_writes_junit_report(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     report_path = tmp_path / "econeval-report.xml"
