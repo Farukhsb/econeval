@@ -75,6 +75,73 @@ def test_run_cli_writes_report(tmp_path: Path) -> None:
     assert payload["summary"]["status"] == "pass"
 
 
+def test_run_cli_blame_flag_includes_traceability_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "econeval.yml"
+    model_path = tmp_path / "model.py"
+    report_path = tmp_path / "econeval-report.json"
+
+    config_path.write_text(
+        "\n".join(
+            [
+                "project: demo-model",
+                "invariants:",
+                "  - name: elasticity_must_be_negative",
+                "    expression: model.elasticity < 0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    model_path.write_text(
+        "\n".join(
+            [
+                "class DemoModel:",
+                "    def __init__(self) -> None:",
+                "        self.elasticity = 0.25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "econeval.invariants.collect_invariant_blame",
+        lambda model, rule: [
+            {
+                "path": "model.py",
+                "line": 3,
+                "commit": "abc123def456",
+                "summary": "Adjust elasticity default",
+                "pull_request": 7,
+            }
+        ],
+    )
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--model",
+            str(model_path),
+            "--class",
+            "DemoModel",
+            "--report",
+            str(report_path),
+            "--blame",
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    item = payload["invariants"][0]
+    assert item["passed"] is False
+    assert item["trace"] is not None
+    assert item["blame"][0]["commit"] == "abc123def456"
+    assert item["blame"][0]["pull_request"] == 7
+
+
 def test_run_cli_requires_model_for_model_based_checks(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     report_path = tmp_path / "missing-model-report.json"

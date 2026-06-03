@@ -170,6 +170,7 @@ econeval/
       cli.py
       config.py
       invariants.py
+      traceability.py
       scenarios.py
       reporting.py
   tests/
@@ -247,6 +248,14 @@ econeval --config examples/basic_model/econeval.yml --model examples/basic_model
 
 ```bash
 econeval --watch --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report econeval-report.json
+```
+
+For extra traceability on failed invariants, add `--blame`. EconEval will attempt to
+git-blame the model source lines that look related to the failure and include the
+commit metadata in the report.
+
+```bash
+econeval --blame --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report econeval-report.json
 ```
 
 For model-less CSV relation checks, you can omit `--model` when the config only contains `kind: relation` stress tests:
