@@ -11,6 +11,18 @@ stress_tests:
     metric: mape
     threshold: 0.01
 
+drift_tests:
+  - name: shock_feature_stability
+    baseline_dataset: data/baseline.csv
+    dataset: data/current.csv
+    feature: shock
+    threshold: 0.05
+
 fairness:
-  enabled: false
-  metrics: []
+  enabled: true
+  dataset: data/fairness.csv
+  group_column: group
+  positive_threshold: 1.5
+  metrics:
+    - demographic_parity_difference
+    - disparate_impact_ratio

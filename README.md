@@ -100,11 +100,19 @@ econeval/
     test_invariants.py
 ```
 
+## Install
+
+```bash
+git clone https://github.com/Farukhsb/econeval.git
+cd econeval
+pip install -e .[dev]
+```
+
+`pytest` and `ruff` are included in the `dev` extra. If you only want the CLI, install the package without the extra.
+
 ## How To Use It
 
-Create a config file that lists the checks you want to enforce.
-
-Then point EconEval at a model object and run the invariant suite. Each rule is written as a simple expression, so checks stay close to the domain language people already use.
+Create a config file that lists the checks you want to enforce, then point EconEval at a Python model class.
 
 Command line example:
 
@@ -114,24 +122,30 @@ econeval --config examples/basic_model/econeval.yml --model examples/basic_model
 
 If you prefer module execution, `python -m econeval` works the same way.
 
-Example rule:
+What the current runner expects:
+
+- a model file that defines a class you can import by name
+- a `predict(features)` method for stress tests, drift checks, and fairness checks
+- CSV datasets with an `actual` column for stress tests
+- CSV datasets with the feature or group columns required by the check
+
+Example invariant rule:
 
 ```yaml
 - name: elasticity_must_be_negative
   expression: model.elasticity < 0
 ```
 
-If the expression returns `False`, the check fails.
+If the expression returns `False`, the invariant fails.
 
-The JSON report contains the project name, a summary count, and the outcome for each invariant.
+The JSON report includes the project name, a summary count, and the result of each invariant, stress test, drift check, and fairness check.
 
 ## Next Step
 
 The next useful additions are:
 
-- a JSON report format
-- richer scenario and backtest support
-- drift and fairness checks
+- a richer report viewer
+- more scenario types
 - a GitHub Action that runs the suite on every pull request
 
 ## License

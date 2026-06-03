@@ -1,4 +1,4 @@
-"""Scenario and backtest helpers."""
+"""Scenario, drift, and backtest helpers."""
 
 from __future__ import annotations
 
@@ -6,13 +6,37 @@ import csv
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import mean
 from typing import Any, Iterable
 
-from .config import StressTest
+from .config import DriftTest, StressTest
 
 
 @dataclass(slots=True)
 class ScenarioResult:
+    name: str
+    dataset: str
+    metric: str
+    threshold: float
+    value: float
+    passed: bool
+    error: str | None = None
+
+
+@dataclass(slots=True)
+class DriftResult:
+    name: str
+    baseline_dataset: str
+    dataset: str
+    feature: str
+    threshold: float
+    value: float
+    passed: bool
+    error: str | None = None
+
+
+@dataclass(slots=True)
+class FairnessResult:
     name: str
     dataset: str
     metric: str
@@ -78,7 +102,120 @@ def run_stress_suite(model: Any, tests: Iterable[StressTest], base_path: str | P
     return [run_stress_test(model, test, base_path=base_path) for test in tests]
 
 
+def run_drift_test(test: DriftTest, base_path: str | Path | None = None) -> DriftResult:
+    baseline_path = Path(base_path) / test.baseline_dataset if base_path else Path(test.baseline_dataset)
+    current_path = Path(base_path) / test.dataset if base_path else Path(test.dataset)
+
+    try:
+        baseline_rows = _load_dataset(baseline_path)
+        current_rows = _load_dataset(current_path)
+        baseline_value = _feature_mean(baseline_rows, test.feature)
+        current_value = _feature_mean(current_rows, test.feature)
+        value = abs(current_value - baseline_value)
+        return DriftResult(
+            name=test.name,
+            baseline_dataset=test.baseline_dataset,
+            dataset=test.dataset,
+            feature=test.feature,
+            threshold=test.threshold,
+            value=value,
+            passed=value <= test.threshold,
+        )
+    except Exception as exc:
+        return DriftResult(
+            name=test.name,
+            baseline_dataset=test.baseline_dataset,
+            dataset=test.dataset,
+            feature=test.feature,
+            threshold=test.threshold,
+            value=math.inf,
+            passed=False,
+            error=str(exc),
+        )
+
+
+def run_drift_suite(tests: Iterable[DriftTest], base_path: str | Path | None = None) -> list[DriftResult]:
+    return [run_drift_test(test, base_path=base_path) for test in tests]
+
+
+def run_fairness_checks(
+    model: Any,
+    dataset: str,
+    metrics: list[str],
+    group_column: str = "group",
+    positive_threshold: float = 0.5,
+    base_path: str | Path | None = None,
+) -> list[FairnessResult]:
+    dataset_path = Path(base_path) / dataset if base_path else Path(dataset)
+
+    try:
+        rows = _load_dataset(dataset_path)
+        groups: dict[str, list[float]] = {}
+
+        for row in rows:
+            if group_column not in row:
+                raise ValueError(f"fairness dataset must include a '{group_column}' column")
+            group = row[group_column]
+            features = {
+                key: _to_feature_value(value)
+                for key, value in row.items()
+                if key not in {group_column, "actual"}
+            }
+            score = _to_float(model.predict(features), "prediction")
+            groups.setdefault(group, []).append(score)
+
+        results: list[FairnessResult] = []
+        for metric in metrics:
+            metric_name = metric.lower()
+            if metric_name == "demographic_parity_difference":
+                rates = [_positive_rate(scores, positive_threshold) for scores in groups.values()]
+                value = max(rates) - min(rates)
+                threshold = 0.2
+            elif metric_name == "disparate_impact_ratio":
+                rates = [_positive_rate(scores, positive_threshold) for scores in groups.values()]
+                low = min(rates)
+                high = max(rates)
+                value = 0.0 if high == 0 else low / high
+                threshold = 0.8
+            else:
+                raise ValueError(f"unsupported fairness metric: {metric}")
+
+            results.append(
+                FairnessResult(
+                    name=metric_name,
+                    dataset=dataset,
+                    metric=metric_name,
+                    threshold=threshold,
+                    value=value,
+                    passed=value <= threshold if metric_name == "demographic_parity_difference" else value >= threshold,
+                )
+            )
+
+        return results
+    except Exception as exc:
+        return [
+            FairnessResult(
+                name=metric,
+                dataset=dataset,
+                metric=metric,
+                threshold=0.0,
+                value=math.inf,
+                passed=False,
+                error=str(exc),
+            )
+            for metric in metrics
+        ]
+
+
 def suite_passed(results: list[ScenarioResult]) -> bool:
+    return all(result.passed for result in results)
+
+
+def drift_suite_passed(results: list[DriftResult]) -> bool:
+    return all(result.passed for result in results)
+
+
+def fairness_suite_passed(results: list[FairnessResult]) -> bool:
     return all(result.passed for result in results)
 
 
@@ -117,6 +254,19 @@ def _compute_metric(metric: str, actuals: list[float], predictions: list[float])
         return total / len(actuals)
 
     raise ValueError(f"unsupported metric: {metric}")
+
+
+def _feature_mean(rows: list[dict[str, str]], feature: str) -> float:
+    if feature not in rows[0]:
+        raise ValueError(f"drift dataset must include a '{feature}' column")
+    values = [_to_float(row[feature], feature) for row in rows]
+    return mean(values)
+
+
+def _positive_rate(scores: list[float], threshold: float) -> float:
+    if not scores:
+        return 0.0
+    return sum(1 for score in scores if score >= threshold) / len(scores)
 
 
 def _to_float(value: Any, field_name: str) -> float:

@@ -14,6 +14,8 @@ def test_load_config_reads_example_file() -> None:
     assert config.project == "basic-model"
     assert config.version == 1
     assert len(config.invariants) == 1
+    assert len(config.stress_tests) == 1
+    assert len(config.drift_tests) == 1
     assert config.invariants[0].name == "elasticity_must_be_negative"
-    assert config.fairness.enabled is False
-
+    assert config.fairness.enabled is True
+    assert config.fairness.dataset == "data/fairness.csv"

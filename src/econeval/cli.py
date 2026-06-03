@@ -10,7 +10,14 @@ from pathlib import Path
 from .config import load_config
 from .invariants import run_invariant_suite, suite_passed
 from .reporting import build_json_report, write_json_report
-from .scenarios import run_stress_suite, suite_passed as stress_suite_passed
+from .scenarios import (
+    fairness_suite_passed,
+    drift_suite_passed,
+    run_drift_suite,
+    run_fairness_checks,
+    run_stress_suite,
+    suite_passed as stress_suite_passed,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -59,13 +66,30 @@ def run_cli(argv: list[str] | None = None) -> int:
 
     results = run_invariant_suite(model, config.invariants)
     scenario_results = run_stress_suite(model, config.stress_tests, base_path=Path(args.config).parent)
-    report = build_json_report(config, results, scenario_results)
+    drift_results = run_drift_suite(config.drift_tests, base_path=Path(args.config).parent)
+    fairness_results = []
+    if config.fairness.enabled and config.fairness.dataset:
+        fairness_results = run_fairness_checks(
+            model,
+            config.fairness.dataset,
+            config.fairness.metrics,
+            group_column=config.fairness.group_column,
+            positive_threshold=config.fairness.positive_threshold,
+            base_path=Path(args.config).parent,
+        )
+
+    report = build_json_report(config, results, scenario_results, drift_results, fairness_results)
     write_json_report(args.report, report)
 
     status = report["summary"]["status"]
     print(f"EconEval: {status} ({report['summary']['passed']}/{report['summary']['total']} checks passed)")
 
-    return 0 if suite_passed(results) and stress_suite_passed(scenario_results) else 1
+    return 0 if (
+        suite_passed(results)
+        and stress_suite_passed(scenario_results)
+        and drift_suite_passed(drift_results)
+        and fairness_suite_passed(fairness_results)
+    ) else 1
 
 
 def main(argv: list[str] | None = None) -> int:

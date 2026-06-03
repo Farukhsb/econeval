@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from econeval.config import EconEvalConfig, FairnessConfig, InvariantRule
+from econeval.config import DriftTest, EconEvalConfig, FairnessConfig, InvariantRule
 from econeval.invariants import InvariantResult
 from econeval.reporting import build_json_report, write_json_report
-from econeval.scenarios import ScenarioResult
+from econeval.scenarios import DriftResult, FairnessResult, ScenarioResult
 
 
 def test_build_json_report_summarizes_results() -> None:
@@ -48,6 +48,40 @@ def test_build_json_report_counts_scenario_results() -> None:
     assert report["summary"]["failed"] == 0
     assert report["summary"]["status"] == "pass"
     assert len(report["stress_tests"]) == 1
+
+
+def test_build_json_report_includes_drift_and_fairness_results() -> None:
+    config = EconEvalConfig(project="demo-model")
+    drift_results = [
+        DriftResult(
+            name="shock_feature_stability",
+            baseline_dataset="data/baseline.csv",
+            dataset="data/current.csv",
+            feature="shock",
+            threshold=0.05,
+            value=0.01,
+            passed=True,
+        )
+    ]
+    fairness_results = [
+        FairnessResult(
+            name="demographic_parity_difference",
+            dataset="data/fairness.csv",
+            metric="demographic_parity_difference",
+            threshold=0.2,
+            value=0.0,
+            passed=True,
+        )
+    ]
+
+    report = build_json_report(config, [], [], drift_results, fairness_results)
+
+    assert report["summary"]["total"] == 2
+    assert report["summary"]["passed"] == 2
+    assert report["summary"]["failed"] == 0
+    assert report["summary"]["status"] == "pass"
+    assert len(report["drift_checks"]) == 1
+    assert len(report["fairness_checks"]) == 1
 
 
 def test_write_json_report_creates_parent_directories(tmp_path: Path) -> None:

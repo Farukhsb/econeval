@@ -22,9 +22,21 @@ class StressTest:
 
 
 @dataclass(slots=True)
+class DriftTest:
+    name: str
+    baseline_dataset: str
+    dataset: str
+    feature: str
+    threshold: float
+
+
+@dataclass(slots=True)
 class FairnessConfig:
     enabled: bool = False
     metrics: list[str] = field(default_factory=list)
+    dataset: str | None = None
+    group_column: str = "group"
+    positive_threshold: float = 0.5
 
 
 @dataclass(slots=True)
@@ -33,6 +45,7 @@ class EconEvalConfig:
     version: int = 1
     invariants: list[InvariantRule] = field(default_factory=list)
     stress_tests: list[StressTest] = field(default_factory=list)
+    drift_tests: list[DriftTest] = field(default_factory=list)
     fairness: FairnessConfig = field(default_factory=FairnessConfig)
 
 
@@ -70,6 +83,17 @@ def _config_from_mapping(data: dict[str, Any]) -> EconEvalConfig:
         for item in _require_list_of_mappings(data.get("stress_tests", []), "stress_tests")
     ]
 
+    drift_tests = [
+        DriftTest(
+            name=_require_str(item, "name"),
+            baseline_dataset=_require_str(item, "baseline_dataset"),
+            dataset=_require_str(item, "dataset"),
+            feature=_require_str(item, "feature"),
+            threshold=float(item.get("threshold")),
+        )
+        for item in _require_list_of_mappings(data.get("drift_tests", []), "drift_tests")
+    ]
+
     fairness_data = data.get("fairness", {})
     if not isinstance(fairness_data, dict):
         raise ValueError("fairness must be a mapping")
@@ -77,6 +101,9 @@ def _config_from_mapping(data: dict[str, Any]) -> EconEvalConfig:
     fairness = FairnessConfig(
         enabled=bool(fairness_data.get("enabled", False)),
         metrics=_require_list_of_strings(fairness_data.get("metrics", []), "fairness.metrics"),
+        dataset=_optional_str(fairness_data.get("dataset")),
+        group_column=str(fairness_data.get("group_column", "group")),
+        positive_threshold=float(fairness_data.get("positive_threshold", 0.5)),
     )
 
     return EconEvalConfig(
@@ -84,6 +111,7 @@ def _config_from_mapping(data: dict[str, Any]) -> EconEvalConfig:
         version=version,
         invariants=invariants,
         stress_tests=stress_tests,
+        drift_tests=drift_tests,
         fairness=fairness,
     )
 
@@ -101,7 +129,7 @@ def _parse_yaml_like(text: str) -> dict[str, Any]:
 
         if line.endswith(":"):
             key = line[:-1].strip()
-            if key in {"invariants", "stress_tests"}:
+            if key in {"invariants", "stress_tests", "drift_tests"}:
                 items, index = _parse_mapping_list(lines, index + 1)
                 data[key] = items
                 continue
@@ -205,6 +233,24 @@ def _parse_fairness_block(lines: list[str], start_index: int) -> tuple[dict[str,
             fairness["metrics"] = metrics
             continue
 
+        if stripped.startswith("dataset:"):
+            _, value = _parse_key_value(stripped)
+            fairness["dataset"] = _optional_str(_parse_scalar(value))
+            index += 1
+            continue
+
+        if stripped.startswith("group_column:"):
+            _, value = _parse_key_value(stripped)
+            fairness["group_column"] = _require_str({"value": _parse_scalar(value)}, "value")
+            index += 1
+            continue
+
+        if stripped.startswith("positive_threshold:"):
+            _, value = _parse_key_value(stripped)
+            fairness["positive_threshold"] = float(_parse_scalar(value))
+            index += 1
+            continue
+
         raise ValueError(f"unsupported fairness field: {stripped}")
 
     return fairness, index
@@ -265,3 +311,10 @@ def _require_list_of_strings(value: Any, key: str) -> list[str]:
         result.append(item)
     return result
 
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError("value must be a non-empty string when provided")
+    return value
