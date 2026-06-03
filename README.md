@@ -7,13 +7,13 @@
 [![PyPI version](https://img.shields.io/pypi/v/econeval.svg)](https://pypi.org/project/econeval/)
 [![CI](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml/badge.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
 [![Python 3.10-3.11](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-v0.3.0-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.3.0)
+[![Version](https://img.shields.io/badge/version-v0.3.1-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.3.1)
 
 EconEval is a small open-source framework for checking economic and policy models in CI.
 
 It is built for the kind of code that can look fine at the syntax level and still be wrong in practice. A model can run, pass unit tests, and still break an economic rule, drift off course after a data change, or produce results that no longer make sense under stress. EconEval is meant to catch those problems early, before they reach a report, dashboard, or paper.
 
-Latest release: [`v0.3.0`](https://github.com/Farukhsb/econeval/releases/tag/v0.3.0)
+Latest release: [`v0.3.1`](https://github.com/Farukhsb/econeval/releases/tag/v0.3.1)
 
 ## What It Does
 
@@ -183,7 +183,7 @@ Once the package is published to PyPI, the normal install path will be:
 pip install econeval
 ```
 
-If you want the published package state, start from the `v0.3.0` release tag or the GitHub release page.
+If you want the published package state, start from the `v0.3.1` release tag or the GitHub release page.
 
 ## How To Use It
 
@@ -335,14 +335,14 @@ When you are ready to publish a new version:
 
 1. run the test suite locally
 2. update the package version if needed
-3. tag the release, for example `v0.3.0`
+3. tag the release, for example `v0.3.1`
 4. publish the GitHub Release so the release workflow runs
 5. confirm the release artifact uploaded from Actions
 6. confirm the wheel and sdist were published to PyPI
 
-To publish to PyPI through GitHub Actions, add a `PYPI_TOKEN` repository secret with
-an upload token for the `econeval` project, then publish the GitHub Release. The
-release workflow will build the distribution and upload it automatically.
+To publish to PyPI through GitHub Actions, enable PyPI trusted publishing for this
+repository and then publish the GitHub Release. The release workflow will build the
+distribution and upload it automatically.
 
 ## Changelog
 
