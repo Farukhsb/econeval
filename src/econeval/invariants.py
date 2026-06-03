@@ -268,7 +268,6 @@ def _evaluate_node(node: ast.AST, context: dict[str, Any]) -> Any:
         left = _evaluate_node(node.left, context)
         right = _evaluate_node(node.right, context)
         return _apply_binop(node.op, left, right)
-
     raise ValueError(f"unsupported expression: {type(node).__name__}")
 
 
