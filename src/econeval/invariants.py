@@ -18,8 +18,6 @@ _ALLOWED_NODES = (
     ast.Load,
     ast.Attribute,
     ast.Constant,
-    ast.List,
-    ast.Tuple,
 )
 
 _ALLOWED_BINOPS = (
@@ -141,20 +139,14 @@ def run_invariant_suite(model: Any, rules: list[InvariantRule]) -> list[Invarian
 
     for rule in rules:
         try:
-            passed = _as_bool(evaluate_expression(rule.expression, context, backend=rule.backend))
+            value = evaluate_expression(rule.expression, context, backend=rule.backend)
+            passed = _as_bool(value)
             results.append(
                 InvariantResult(
                     name=rule.name,
                     expression=rule.expression,
                     passed=passed,
-                    detail=(
-                        None
-                        if passed
-                        else _format_rule_error(
-                            rule,
-                            "expression evaluated to False",
-                        )
-                    ),
+                    detail=None if passed else _describe_failed_expression(rule, context),
                 )
             )
         except SyntaxError as exc:
@@ -197,6 +189,78 @@ def suite_passed(results: list[InvariantResult]) -> bool:
 
 def _format_rule_error(rule: InvariantRule, message: str) -> str:
     return f"{message} [name={rule.name}, backend={rule.backend}, expression={rule.expression}]"
+
+
+def _describe_failed_expression(rule: InvariantRule, context: dict[str, Any]) -> str:
+    try:
+        tree = ast.parse(rule.expression, mode="eval")
+    except SyntaxError:
+        return _format_rule_error(rule, "expression evaluated to False")
+
+    detail = _describe_compare_failure(tree.body, context)
+    if detail is not None:
+        return _format_rule_error(rule, detail)
+
+    try:
+        value = _evaluate_node(tree.body, context)
+    except Exception:
+        return _format_rule_error(rule, "expression evaluated to False")
+
+    return _format_rule_error(rule, f"expression evaluated to False (value={value!r})")
+
+
+def _describe_compare_failure(node: ast.AST, context: dict[str, Any]) -> str | None:
+    if not isinstance(node, ast.Compare):
+        return None
+
+    left_node = node.left
+    left_text = _safe_unparse(left_node)
+    left_value = _evaluate_node(left_node, context)
+
+    for operator, comparator in zip(node.ops, node.comparators, strict=True):
+        right_text = _safe_unparse(comparator)
+        right_value = _evaluate_node(comparator, context)
+        if not _compare(operator, left_value, right_value):
+            symbol = _operator_symbol(operator)
+            return (
+                f"{left_text} evaluated to {left_value!r}; "
+                f"expected {symbol} {right_text} (got {right_value!r})"
+            )
+        left_text = right_text
+        left_value = right_value
+
+    return None
+
+
+def _safe_unparse(node: ast.AST) -> str:
+    try:
+        return ast.unparse(node)
+    except Exception:  # pragma: no cover - defensive fallback
+        return type(node).__name__
+
+
+def _operator_symbol(operator: ast.cmpop) -> str:
+    if isinstance(operator, ast.Eq):
+        return "=="
+    if isinstance(operator, ast.NotEq):
+        return "!="
+    if isinstance(operator, ast.Lt):
+        return "<"
+    if isinstance(operator, ast.LtE):
+        return "<="
+    if isinstance(operator, ast.Gt):
+        return ">"
+    if isinstance(operator, ast.GtE):
+        return ">="
+    if isinstance(operator, ast.In):
+        return "in"
+    if isinstance(operator, ast.NotIn):
+        return "not in"
+    if isinstance(operator, ast.Is):
+        return "is"
+    if isinstance(operator, ast.IsNot):
+        return "is not"
+    return type(operator).__name__
 
 
 def _evaluate_python_ast(expression: str, context: dict[str, Any]) -> Any:
@@ -268,10 +332,6 @@ def _validate_expression(tree: ast.Expression) -> None:
         if isinstance(node, ast.Subscript):
             raise ValueError("subscript access is not allowed in invariant expressions")
 
-        if isinstance(node, ast.Call):
-            _validate_call(node)
-            continue
-
         if not isinstance(
             node,
             _ALLOWED_NODES
@@ -307,17 +367,12 @@ def _validate_expression(tree: ast.Expression) -> None:
             | ast.ListComp
             | ast.SetComp
             | ast.DictComp
-            | ast.GeneratorExp,
+            | ast.GeneratorExp
+            | ast.List
+            | ast.Tuple
+            | ast.Call
         ):
             raise ValueError(f"unsupported syntax: {type(node).__name__}")
-
-
-def _validate_call(node: ast.Call) -> None:
-    if not isinstance(node.func, ast.Name):
-        raise ValueError("only simple function calls are allowed in invariant expressions")
-
-    if node.func.id not in _SAFE_FUNCTIONS:
-        raise ValueError(f"function {node.func.id!r} is not allowed in invariant expressions")
 
 
 def _compare(operator: ast.cmpop, left: Any, right: Any) -> bool:
@@ -360,20 +415,6 @@ def _apply_binop(operator: ast.operator, left: Any, right: Any) -> Any:
     if isinstance(operator, ast.Pow):
         return left**right
     raise ValueError(f"unsupported binary operator: {type(operator).__name__}")
-
-
-def _evaluate_call(node: ast.Call, context: dict[str, Any]) -> Any:
-    name = _call_name(node)
-    func = _SAFE_FUNCTIONS[name]
-    args = [_evaluate_node(arg, context) for arg in node.args]
-    kwargs = {keyword.arg: _evaluate_node(keyword.value, context) for keyword in node.keywords}
-    return func(*args, **kwargs)
-
-
-def _call_name(node: ast.Call) -> str:
-    if not isinstance(node.func, ast.Name):
-        raise ValueError("only simple function calls are allowed in invariant expressions")
-    return node.func.id
 
 
 def _evaluate_numexpr(expression: str, context: dict[str, Any]) -> Any:

@@ -158,6 +158,7 @@ def test_build_json_report_includes_drift_and_fairness_results() -> None:
             threshold=0.2,
             value=0.0,
             passed=True,
+            severity="pass",
         )
     ]
 
@@ -169,6 +170,30 @@ def test_build_json_report_includes_drift_and_fairness_results() -> None:
     assert report["summary"]["status"] == "pass"
     assert len(report["drift_checks"]) == 1
     assert len(report["fairness_checks"]) == 1
+    assert report["fairness_checks"][0]["severity"] == "pass"
+
+
+def test_build_json_report_treats_fairness_warn_as_non_failing() -> None:
+    config = EconEvalConfig(project="demo-model")
+    report = build_json_report(
+        config,
+        [],
+        fairness_results=[
+            FairnessResult(
+                name="disparate_impact_ratio",
+                dataset="data/fairness.csv",
+                metric="disparate_impact_ratio",
+                threshold=0.8,
+                value=0.79,
+                passed=False,
+                severity="warn",
+            )
+        ],
+    )
+
+    assert report["summary"]["status"] == "pass"
+    assert report["summary"]["failed"] == 0
+    assert report["summary"]["passed"] == 1
 
 
 def test_build_json_report_includes_economic_drift_results() -> None:
@@ -208,6 +233,36 @@ def test_build_json_report_includes_issues() -> None:
     assert report["summary"]["failed"] == 1
     assert report["summary"]["status"] == "fail"
     assert report["issues"][0]["stage"] == "config"
+
+
+def test_build_json_report_has_stable_schema() -> None:
+    report = build_json_report(EconEvalConfig(project="demo-model"), [])
+
+    assert set(report) == {
+        "generated_at",
+        "project",
+        "version",
+        "summary",
+        "invariants",
+        "economic_checks",
+        "economic_drift_checks",
+        "stress_tests",
+        "drift_checks",
+        "fairness_checks",
+        "issues",
+    }
+    assert set(report["summary"]) == {"total", "passed", "failed", "status"}
+    assert report["summary"]["total"] == 0
+    assert report["summary"]["passed"] == 0
+    assert report["summary"]["failed"] == 0
+    assert report["summary"]["status"] == "pass"
+    assert report["invariants"] == []
+    assert report["economic_checks"] == []
+    assert report["economic_drift_checks"] == []
+    assert report["stress_tests"] == []
+    assert report["drift_checks"] == []
+    assert report["fairness_checks"] == []
+    assert report["issues"] == []
 
 
 def test_write_json_report_creates_parent_directories(tmp_path: Path) -> None:
@@ -282,6 +337,31 @@ def test_write_markdown_report_includes_worst_state(tmp_path: Path) -> None:
     assert "10.0" in text
 
 
+def test_write_markdown_report_includes_fairness_severity(tmp_path: Path) -> None:
+    report_path = tmp_path / "artifacts" / "econeval-report.md"
+    report = build_json_report(
+        EconEvalConfig(project="demo-model"),
+        [],
+        fairness_results=[
+            FairnessResult(
+                name="disparate_impact_ratio",
+                dataset="data/fairness.csv",
+                metric="disparate_impact_ratio",
+                threshold=0.8,
+                value=0.78,
+                passed=False,
+                severity="warn",
+            )
+        ],
+    )
+
+    write_markdown_report(report_path, report)
+
+    text = report_path.read_text(encoding="utf-8")
+    assert "- `disparate_impact_ratio`: `warn`" in text
+    assert "warn" in text
+
+
 def test_write_html_report_writes_text(tmp_path: Path) -> None:
     report_path = tmp_path / "artifacts" / "econeval-report.html"
     report = build_json_report(EconEvalConfig(project="demo-model"), [])
@@ -354,6 +434,33 @@ def test_write_dashboard_report_includes_overview_and_spotlight(tmp_path: Path) 
     assert "Open card" in text
 
 
+def test_write_dashboard_report_includes_fairness_severity(tmp_path: Path) -> None:
+    report_path = tmp_path / "artifacts" / "econeval-dashboard.html"
+    report = build_json_report(
+        EconEvalConfig(project="demo-model"),
+        [],
+        fairness_results=[
+            FairnessResult(
+                name="disparate_impact_ratio",
+                dataset="data/fairness.csv",
+                metric="disparate_impact_ratio",
+                threshold=0.8,
+                value=0.78,
+                passed=False,
+                severity="warn",
+            )
+        ],
+    )
+
+    write_dashboard_report(report_path, report)
+
+    text = report_path.read_text(encoding="utf-8")
+    assert "severity" in text.lower()
+    assert "warn" in text.lower()
+    assert "Fairness warnings" in text
+    assert "1 warnings" in text
+
+
 def test_write_github_step_summary_writes_table(tmp_path: Path) -> None:
     report_path = tmp_path / "artifacts" / "step-summary.md"
     report = build_json_report(
@@ -420,7 +527,7 @@ def test_write_github_step_summary_writes_table(tmp_path: Path) -> None:
     assert "<details>" in text
     assert "All Checks" in text
     assert (
-        "| Type | Check | Margin / Error | Scan Grid / Values | Outcome "
+        "| Type | Check | Severity | Margin / Error | Scan Grid / Values | Outcome "
         "Distribution | Worst Sample | Impacted Variables | Details |"
     ) in text
     assert "samples=12" in text

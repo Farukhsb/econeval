@@ -29,5 +29,8 @@ def test_run_invariant_suite_marks_failed_rules() -> None:
     assert results[0].passed is False
     assert results[1].passed is True
     assert suite_passed(results) is False
+    assert results[0].detail is not None
+    assert "model.elasticity evaluated to 0.25" in results[0].detail
+    assert "expected < 0" in results[0].detail
     assert "elasticity_must_be_negative" in results[0].detail
     assert "model.elasticity < 0" in results[0].detail
