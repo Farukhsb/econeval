@@ -58,6 +58,27 @@ def test_run_stress_test_fails_when_predictions_drift() -> None:
     assert suite_passed([result]) is False
 
 
+def test_run_stress_test_contains_dataset_errors(tmp_path: Path) -> None:
+    dataset = tmp_path / "invalid_stress.csv"
+    dataset.write_text("shock,prediction\n0.1,1.2\n", encoding="utf-8")
+
+    model = DemoModel()
+    test = StressTest(
+        name="malformed_dataset",
+        dataset=str(dataset),
+        metric="mape",
+        threshold=0.1,
+    )
+
+    result = run_stress_test(model, test)
+
+    assert result.passed is False
+    assert result.error_type == "dataset_or_metric"
+    assert result.error is not None
+    assert "actual" in result.error
+    assert suite_passed([result]) is False
+
+
 def test_run_drift_suite_passes_for_small_shift() -> None:
     root = Path(__file__).resolve().parents[1]
     test = DriftTest(
@@ -153,7 +174,34 @@ def test_run_fairness_checks_pass_for_balanced_groups() -> None:
 
     assert len(results) == 2
     assert results[0].passed is True
+    assert results[0].severity == "pass"
     assert results[1].passed is True
+    assert results[1].severity == "pass"
+    assert fairness_suite_passed(results) is True
+
+
+def test_run_fairness_checks_marks_borderline_ratio_as_warn(tmp_path: Path) -> None:
+    dataset = tmp_path / "borderline_fairness.csv"
+    dataset.write_text(
+        "group,signal,actual\na,0.9,1.0\na,0.8,1.0\na,0.7,0.0\na,0.1,0.0\nb,0.9,1.0\nb,0.8,1.0\nb,0.1,0.0\nb,0.2,0.0\n",
+        encoding="utf-8",
+    )
+
+    class SignalModel:
+        def predict(self, features: dict[str, float]) -> float:
+            return float(features.get("signal", 0.0))
+
+    results = run_fairness_checks(
+        SignalModel(),
+        dataset=str(dataset),
+        metrics=["demographic_parity_difference"],
+        group_column="group",
+        positive_threshold=0.5,
+        actual_threshold=0.5,
+    )
+
+    assert results[0].passed is False
+    assert results[0].severity == "warn"
     assert fairness_suite_passed(results) is True
 
 

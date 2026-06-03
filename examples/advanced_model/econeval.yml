@@ -6,8 +6,7 @@ invariants:
     expression: model.elasticity < 0
 
   - name: coefficients_must_exist
-    expression: len(model.coefficients) > 0
-    backend: asteval
+    expression: model.has_coefficients
 
 economic_checks:
   - name: gdp_accounting_identity

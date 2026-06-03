@@ -96,6 +96,7 @@ class FairnessResult:
     threshold: float
     value: float
     passed: bool
+    severity: str = "pass"
     visual: str | None = None
     error: str | None = None
     error_type: str | None = None
@@ -422,6 +423,7 @@ def run_fairness_checks(
                 }
                 else value >= threshold
             )
+            severity = _fairness_severity(metric_name, value, threshold, passed)
 
             results.append(
                 FairnessResult(
@@ -431,6 +433,7 @@ def run_fairness_checks(
                     threshold=threshold,
                     value=value,
                     passed=passed,
+                    severity=severity,
                     visual=_failure_visual(value, threshold, passed),
                 )
             )
@@ -445,6 +448,7 @@ def run_fairness_checks(
                 threshold=0.0,
                 value=math.inf,
                 passed=False,
+                severity="fail",
                 error=str(exc),
                 error_type="fairness",
             )
@@ -952,7 +956,7 @@ def drift_suite_passed(results: list[DriftResult]) -> bool:
 
 
 def fairness_suite_passed(results: list[FairnessResult]) -> bool:
-    return all(result.passed for result in results)
+    return all(result.severity != "fail" and result.error is None for result in results)
 
 
 def economic_drift_suite_passed(results: list[EconomicDriftResult]) -> bool:
@@ -1328,6 +1332,21 @@ def _positive_rate(scores: list[float], threshold: float) -> float:
     if not scores:
         return 0.0
     return sum(1 for score in scores if score >= threshold) / len(scores)
+
+
+def _fairness_severity(metric: str, value: float, threshold: float, passed: bool) -> str:
+    if passed:
+        return "pass"
+
+    if not math.isfinite(value):
+        return "fail"
+
+    if metric == "disparate_impact_ratio":
+        warn_floor = max(0.0, threshold - 0.1)
+        return "warn" if value >= warn_floor else "fail"
+
+    warn_ceiling = threshold + 0.1
+    return "warn" if value <= warn_ceiling else "fail"
 
 
 def _true_positive_rate(

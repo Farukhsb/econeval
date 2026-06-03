@@ -59,8 +59,8 @@ def build_json_report(
     economic_drift_passed_count = sum(1 for result in economic_drift_results if result.passed)
     economic_drift_failed_count = len(economic_drift_results) - economic_drift_passed_count
     fairness_results = fairness_results or []
-    fairness_passed_count = sum(1 for result in fairness_results if result.passed)
-    fairness_failed_count = len(fairness_results) - fairness_passed_count
+    fairness_passed_count = sum(1 for result in fairness_results if not _is_fairness_failure(result))
+    fairness_failed_count = sum(1 for result in fairness_results if _is_fairness_failure(result))
     issues = issues or []
     issue_count = len(issues)
     overall_failed = (
@@ -325,20 +325,21 @@ def _render_github_step_summary(report: dict[str, Any]) -> str:
             "## Failed Checks",
             "",
             (
-                "| Type | Check | Margin / Error | Scan Grid / Values | Outcome "
+                "| Type | Check | Severity | Margin / Error | Scan Grid / Values | Outcome "
                 "Distribution | Worst Sample | Impacted Variables | Details |"
             ),
-            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for failure in failures:
         lines.append(
             (
-                "| {type} | {name} | {margin} | {scan} | {distribution} | {worst_sample} |"
-                " {impacted} | {details} |"
+                "| {type} | {name} | {severity} | {margin} | {scan} | {distribution} | "
+                "{worst_sample} | {impacted} | {details} |"
             ).format(
                 type=_markdown_cell(failure["type"]),
                 name=_markdown_cell(failure["name"]),
+                severity=_markdown_cell(failure.get("severity", "")),
                 margin=_markdown_cell(failure["margin"]),
                 scan=_markdown_cell(failure["scan"]),
                 distribution=_markdown_cell(failure.get("distribution", "")),
@@ -381,7 +382,7 @@ def _render_html_report(report: dict[str, Any]) -> str:
         ".card,.stat{background:#fff;border:1px solid #e5e7eb;border-radius:12px;"
         "padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04);}"
         ".cards{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));}"
-        ".status-pass{color:#166534}.status-fail{color:#b91c1c}"
+        ".status-pass{color:#166534}.status-warn{color:#b45309}.status-fail{color:#b91c1c}"
         ".status-error{color:#92400e}"
         ".state-summary{margin-top:8px;padding:10px;border-radius:10px;"
         "background:#f9fafb;border:1px solid #e5e7eb;}"
@@ -427,6 +428,7 @@ def _render_dashboard_report(report: dict[str, Any]) -> str:
     spotlight = _failure_spotlight(report)
     top_failures = _top_failures_table(report)
     controls = _dashboard_controls()
+    fairness_warnings = _fairness_warning_count(report)
     sections = []
     for key, title in _REPORT_SECTIONS:
         items = report.get(key, [])
@@ -522,6 +524,7 @@ def _render_dashboard_report(report: dict[str, Any]) -> str:
             *_render_dashboard_stat("Failed", report["summary"]["failed"]),
             *_render_dashboard_stat("Total", report["summary"]["total"]),
             *_render_dashboard_stat("Pass rate", _dashboard_pass_rate(report)),
+            *_render_dashboard_stat("Fairness warnings", fairness_warnings),
             "</div>",
             overview,
             controls,
@@ -570,6 +573,10 @@ def _render_html_item(section: str, item: dict[str, Any], anchor: str | None = N
         f"<p class='status-{escape(_item_status(section, item))}'>",
         f"{escape(_item_status(section, item))}</p>",
     ]
+    if section == "fairness_checks" and item.get("severity"):
+        body.append(
+            f"<p class='severity'><strong>severity:</strong> {escape(str(item['severity']))}</p>"
+        )
     state_summary = _render_html_state_summary(section, item)
     if state_summary:
         body.append(state_summary)
@@ -588,6 +595,8 @@ def _item_name(section: str, item: dict[str, Any]) -> str:
 def _item_status(section: str, item: dict[str, Any]) -> str:
     if section == "issues":
         return "error"
+    if section == "fairness_checks":
+        return str(item.get("severity") or ("pass" if item.get("passed", True) else "fail"))
     return "pass" if item.get("passed", True) else "fail"
 
 
@@ -608,6 +617,7 @@ def _item_details(section: str, item: dict[str, Any]) -> list[tuple[str, Any]]:
         "threshold",
         "tolerance",
         "metric",
+        "severity",
         "kind",
         "dataset",
         "baseline_dataset",
@@ -715,7 +725,7 @@ def _collect_failed_items(report: dict[str, Any]) -> list[dict[str, str]]:
         ("fairness_checks", "Fairness Check"),
     ):
         for index, item in enumerate(report.get(section, [])):
-            if item.get("passed", True):
+            if not _item_is_hard_failure(section, item):
                 continue
             failures.append(
                 {
@@ -764,7 +774,8 @@ def _collect_all_items(report: dict[str, Any]) -> list[dict[str, str]]:
                     "type": label,
                     "name": str(item.get("name", "")),
                     "anchor": _card_id(section, item, index),
-                    "status": "pass" if item.get("passed", True) else "fail",
+                    "status": _item_status(section, item),
+                    "severity": str(item.get("severity", "")),
                     "margin": _failure_margin(item),
                     "scan": _scan_values(item),
                     "distribution": _outcome_distribution(item),
@@ -781,6 +792,7 @@ def _collect_all_items(report: dict[str, Any]) -> list[dict[str, str]]:
                 "name": str(issue.get("stage", "")),
                 "anchor": "issues",
                 "status": "error",
+                "severity": "error",
                 "margin": str(issue.get("message", "")),
                 "scan": "",
                 "distribution": "",
@@ -835,6 +847,7 @@ def _impacted_variables(item: dict[str, Any]) -> str:
 def _failure_details(item: dict[str, Any]) -> str:
     parts: list[str] = []
     for key in (
+        "severity",
         "detail",
         "error",
         "error_type",
@@ -858,6 +871,26 @@ def _failure_details(item: dict[str, Any]) -> str:
             continue
         parts.append(f"{key}={value}")
     return ", ".join(parts)
+
+
+def _item_is_hard_failure(section: str, item: dict[str, Any]) -> bool:
+    if section == "fairness_checks":
+        if item.get("error"):
+            return True
+        return str(item.get("severity", "fail")) == "fail"
+    return not item.get("passed", True)
+
+
+def _is_fairness_failure(result: FairnessResult) -> bool:
+    return result.error is not None or result.severity == "fail"
+
+
+def _item_is_warning(section: str, item: dict[str, Any]) -> bool:
+    return section == "fairness_checks" and str(item.get("severity")) == "warn"
+
+
+def _fairness_warning_count(report: dict[str, Any]) -> int:
+    return sum(1 for item in report.get("fairness_checks", []) if str(item.get("severity")) == "warn")
 
 
 def _scan_values(item: dict[str, Any]) -> str:
@@ -958,12 +991,14 @@ def _dashboard_overview(report: dict[str, Any]) -> str:
         items = report.get(key, [])
         if not items:
             continue
-        passed = sum(1 for item in items if item.get("passed", True))
+        passed = sum(1 for item in items if not _item_is_hard_failure(key, item))
+        warnings = sum(1 for item in items if _item_is_warning(key, item))
         total = len(items)
         counts.append(
             (
                 title,
                 passed,
+                warnings,
                 total - passed,
                 total,
             )
@@ -973,15 +1008,16 @@ def _dashboard_overview(report: dict[str, Any]) -> str:
         return ""
 
     cards = []
-    for title, passed, failed, total in counts:
+    for title, passed, warnings, failed, total in counts:
         width = 100 if total == 0 else round((passed / total) * 100)
+        warning_text = f", {warnings} warnings" if warnings else ""
         cards.append(
             "".join(
                 [
                     "<div class='card'>",
                     f"<h3>{escape(title)}s</h3>",
                     f"<div class='bar'><span style='width:{width}%'></span></div>",
-                    f"<div class='meta'>{passed}/{total} passed, {failed} failed</div>",
+                    f"<div class='meta'>{passed}/{total} passed, {failed} failed{warning_text}</div>",
                     "</div>",
                 ]
             )

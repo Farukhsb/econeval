@@ -16,6 +16,9 @@ fairness:
   dataset: data/fairness.csv
   group_column: group
   positive_threshold: 1.5
+  actual_threshold: 1.0
   metrics:
     - demographic_parity_difference
     - disparate_impact_ratio
+    - equal_opportunity_difference
+    - equalized_odds_difference

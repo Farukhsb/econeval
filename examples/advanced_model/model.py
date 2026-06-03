@@ -33,3 +33,7 @@ class AdvancedModel:
 
     def solve(self) -> bool:
         return self.supply >= 0
+
+    @property
+    def has_coefficients(self) -> bool:
+        return len(self.coefficients) > 0

@@ -5,7 +5,8 @@
 </p>
 
 [![PyPI version](https://img.shields.io/pypi/v/econeval.svg)](https://pypi.org/project/econeval/)
-[![Tests](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml/badge.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
+[![CI](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml/badge.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
+[![Python 3.10-3.11](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-v0.3.0-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.3.0)
 
 EconEval is a small open-source framework for checking economic and policy models in CI.
@@ -128,6 +129,7 @@ econeval/
   .github/
     workflows/
       ci.yml
+  action.yml
   examples/
     basic_model/
       model.py
@@ -136,6 +138,7 @@ econeval/
       model.py
       econeval.yml
     fairness_model/
+      README.md
       model.py
       econeval.yml
     broken_model/
@@ -150,6 +153,7 @@ econeval/
   src/
     econeval/
       __init__.py
+      cli.py
       config.py
       invariants.py
       scenarios.py
@@ -161,6 +165,8 @@ econeval/
 
 ## Install
 
+For development from a checkout:
+
 ```bash
 git clone https://github.com/Farukhsb/econeval.git
 cd econeval
@@ -168,6 +174,14 @@ pip install -e .[dev]
 ```
 
 `pytest` and `ruff` are included in the `dev` extra. If you only want the CLI, install the package without the extra.
+
+EconEval parses its YAML-like config format with its own loader, so you do not need `PyYAML` for the current release.
+
+Once the package is published to PyPI, the normal install path will be:
+
+```bash
+pip install econeval
+```
 
 If you want the published package state, start from the `v0.3.0` release tag or the GitHub release page.
 
@@ -189,6 +203,47 @@ To write a text report instead:
 econeval --config examples/advanced_model/econeval.yml --model examples/advanced_model/model.py --class AdvancedModel --report econeval-report.md --format markdown
 econeval --config examples/advanced_model/econeval.yml --model examples/advanced_model/model.py --class AdvancedModel --report econeval-report.html --format html
 ```
+
+## GitHub Action
+
+The repository also exposes a composite GitHub Action so workflows can run EconEval in one step.
+
+```yaml
+- uses: Farukhsb/econeval@v1
+  with:
+    config: examples/basic_model/econeval.yml
+    model: examples/basic_model/model.py
+    class: DemoModel
+    report: econeval-report.json
+    python-version: "3.11"
+```
+
+The action installs the package from the action source, sets up Python, and runs the CLI with the inputs you provide.
+
+## Fairness Checks
+
+Fairness checks expect a tabular dataset with:
+
+- a group column, defaulting to `group`
+- one or more feature columns that are passed to `predict(features)`
+- an `actual` column when you use label-based metrics such as `equal_opportunity_difference` or `equalized_odds_difference`
+
+The example in [examples/fairness_model/README.md](examples/fairness_model/README.md) shows the full data format.
+
+The built-in thresholds are:
+
+- `demographic_parity_difference`: pass at `<= 0.2`
+- `disparate_impact_ratio`: pass at `>= 0.8`
+- `equal_opportunity_difference`: pass at `<= 0.2`
+- `equalized_odds_difference`: pass at `<= 0.2`
+- `gini`: pass at `<= 0.3`
+- `atkinson`: pass at `<= 0.2`
+
+Fairness results also include a `severity` field:
+
+- `pass` for checks within the threshold
+- `warn` for borderline misses that should not fail CI
+- `fail` for clear misses or execution errors
 
 To run the full advanced example with synthetic shocks, drift checks, fairness metrics, and scan checks:
 
@@ -225,10 +280,9 @@ EconEval uses a restricted AST-based expression engine for invariants.
 
 That keeps the syntax simple for users while avoiding raw `eval()`. It is still a security-sensitive surface, so the allowed syntax is intentionally narrow:
 
-- basic comparisons
-- boolean logic
-- simple arithmetic
-- attribute access on the model object
+- comparisons, boolean logic, simple arithmetic, and attribute access on the model object
+
+It explicitly rejects function calls, subscripts, comprehensions, lambdas, dictionaries, sets, and private attributes such as `__class__`.
 
 If you need a broader or more standardized expression engine later, the most likely replacement options are `asteval` or `numexpr`, depending on whether you need general Python-like rules or numeric-only expressions.
 
@@ -274,7 +328,6 @@ The next useful additions are:
 
 - a richer report viewer
 - more scenario types
-- a GitHub Action that runs the suite on every pull request
 
 ## Release Checklist
 
@@ -290,6 +343,10 @@ When you are ready to publish a new version:
 To publish to PyPI through GitHub Actions, enable PyPI trusted publishing for this
 repository and then publish the GitHub Release. The release workflow will build the
 distribution and upload it automatically.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version-by-version changes.
 
 ## License
 
