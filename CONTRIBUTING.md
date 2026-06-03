@@ -37,4 +37,3 @@ ruff check .
 - The package version lives in `pyproject.toml`.
 - GitHub Releases trigger the release workflow in `.github/workflows/release.yml`.
 - If a release changes the public behavior, add an entry to `CHANGELOG.md`.
-

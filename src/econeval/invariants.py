@@ -315,9 +315,6 @@ def _evaluate_node(node: ast.AST, context: dict[str, Any]) -> Any:
         right = _evaluate_node(node.right, context)
         return _apply_binop(node.op, left, right)
 
-    if isinstance(node, ast.Call):
-        return _evaluate_call(node, context)
-
     if isinstance(node, ast.List):
         return [_evaluate_node(element, context) for element in node.elts]
 
@@ -370,7 +367,7 @@ def _validate_expression(tree: ast.Expression) -> None:
             | ast.GeneratorExp
             | ast.List
             | ast.Tuple
-            | ast.Call
+            | ast.Call,
         ):
             raise ValueError(f"unsupported syntax: {type(node).__name__}")
 

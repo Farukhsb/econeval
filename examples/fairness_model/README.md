@@ -40,4 +40,3 @@ The bundled config in `econeval.yml` uses:
 - `equalized_odds_difference`
 
 The example is intentionally balanced so the fairness checks pass, while still showing the full schema used by the fairness engine.
-
