@@ -59,7 +59,9 @@ def build_json_report(
     economic_drift_passed_count = sum(1 for result in economic_drift_results if result.passed)
     economic_drift_failed_count = len(economic_drift_results) - economic_drift_passed_count
     fairness_results = fairness_results or []
-    fairness_passed_count = sum(1 for result in fairness_results if not _is_fairness_failure(result))
+    fairness_passed_count = sum(
+        1 for result in fairness_results if not _is_fairness_failure(result)
+    )
     fairness_failed_count = sum(1 for result in fairness_results if _is_fairness_failure(result))
     issues = issues or []
     issue_count = len(issues)
@@ -890,7 +892,9 @@ def _item_is_warning(section: str, item: dict[str, Any]) -> bool:
 
 
 def _fairness_warning_count(report: dict[str, Any]) -> int:
-    return sum(1 for item in report.get("fairness_checks", []) if str(item.get("severity")) == "warn")
+    return sum(
+        1 for item in report.get("fairness_checks", []) if str(item.get("severity")) == "warn"
+    )
 
 
 def _scan_values(item: dict[str, Any]) -> str:
@@ -1017,7 +1021,11 @@ def _dashboard_overview(report: dict[str, Any]) -> str:
                     "<div class='card'>",
                     f"<h3>{escape(title)}s</h3>",
                     f"<div class='bar'><span style='width:{width}%'></span></div>",
-                    f"<div class='meta'>{passed}/{total} passed, {failed} failed{warning_text}</div>",
+                    (
+                        "<div class='meta'>"
+                        f"{passed}/{total} passed, {failed} failed{warning_text}"
+                        "</div>"
+                    ),
                     "</div>",
                 ]
             )
