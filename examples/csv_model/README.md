@@ -11,4 +11,3 @@ In this example:
 - the check verifies `output.revenue == input.price * input.quantity`
 
 The rows are matched by `id`.
-
