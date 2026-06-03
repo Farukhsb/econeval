@@ -34,3 +34,16 @@ def test_run_invariant_suite_marks_failed_rules() -> None:
     assert "expected < 0" in results[0].detail
     assert "elasticity_must_be_negative" in results[0].detail
     assert "model.elasticity < 0" in results[0].detail
+
+
+def test_run_invariant_suite_scales_to_many_rules() -> None:
+    model = DemoModel()
+    rules = [
+        InvariantRule(name=f"elasticity_rule_{idx}", expression="model.elasticity < 0")
+        for idx in range(100)
+    ]
+
+    results = run_invariant_suite(model, rules)
+
+    assert len(results) == 100
+    assert all(result.passed for result in results)

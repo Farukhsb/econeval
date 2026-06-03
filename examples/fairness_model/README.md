@@ -39,4 +39,13 @@ The bundled config in `econeval.yml` uses:
 - `equal_opportunity_difference`
 - `equalized_odds_difference`
 
-The example is intentionally balanced so the fairness checks pass, while still showing the full schema used by the fairness engine.
+## How The Metrics Are Read
+
+- `demographic_parity_difference` compares positive prediction rates between groups: `max(rate) - min(rate)`.
+- `disparate_impact_ratio` compares the lowest positive rate to the highest positive rate: `min(rate) / max(rate)`.
+- `equal_opportunity_difference` compares true positive rates between groups.
+- `equalized_odds_difference` compares both true positive rates and false positive rates between groups.
+
+In this example, a prediction is counted as positive when it is at or above `positive_threshold`, and an observed label is counted as positive when it is at or above `actual_threshold`.
+
+The example is intentionally balanced so the fairness checks pass while still showing the full schema used by the fairness engine.
