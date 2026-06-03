@@ -138,6 +138,9 @@ econeval/
     basic_model/
       model.py
       econeval.yml
+    csv_model/
+      README.md
+      econeval.yml
     drift_model/
       model.py
       econeval.yml
@@ -237,6 +240,12 @@ econeval --config examples/basic_model/econeval.yml --model examples/basic_model
 
 ```bash
 econeval --watch --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report econeval-report.json
+```
+
+For model-less CSV relation checks, you can omit `--model` when the config only contains `kind: relation` stress tests:
+
+```bash
+econeval --config examples/csv_model/econeval.yml --report econeval-report.json
 ```
 
 To compare a current run against a previous JSON report, pass `--baseline-report`:
@@ -370,6 +379,7 @@ The practical rule is simple: if a check needs full Python, put that logic in co
 ## Examples
 
 - `examples/basic_model` shows the happy path.
+- `examples/csv_model` shows model-less CSV relation checks.
 - `examples/broken_model` shows a model and dataset that fail the checks.
 - `examples/drift_model` focuses on drift validation, including PSI, trend drift, and regression drift over time.
 - `examples/fairness_model` focuses on fairness checks and a simple stress test.
@@ -381,6 +391,7 @@ The practical rule is simple: if a check needs full Python, put that logic in co
 
 ## Roadmap
 
+- more model-less CSV relation checks and wrappers for R/Stata/Julia
 - deeper drift comparison and alerting
 - richer fairness configuration and reporting
 - more real-world examples and benchmark coverage

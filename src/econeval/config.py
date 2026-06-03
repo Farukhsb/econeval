@@ -41,7 +41,18 @@ class StressTest(BaseModel):
     metric: str = Field(default="mape", min_length=1)
     threshold: float | None = None
     dataset: str | None = None
-    kind: Literal["dataset", "synthetic", "parameter_shock", "monte_carlo", "grid"] = "dataset"
+    input_dataset: str | None = None
+    output_dataset: str | None = None
+    expression: str | None = None
+    join_key: str | None = None
+    kind: Literal[
+        "dataset",
+        "synthetic",
+        "parameter_shock",
+        "monte_carlo",
+        "grid",
+        "relation",
+    ] = "dataset"
     variable: str | None = None
     shock_type: Literal["multiplier", "additive", "absolute"] = "multiplier"
     value: float | None = None
@@ -65,6 +76,11 @@ class StressTest(BaseModel):
                     "dataset stress test metric must be one of rmse, mae, or mape, "
                     f"got {self.metric!r}"
                 )
+        elif self.kind == "relation":
+            if not self.input_dataset or not self.output_dataset:
+                raise ValueError("relation stress tests require input_dataset and output_dataset")
+            if not self.expression:
+                raise ValueError("relation stress tests require expression")
         else:
             if self.kind == "monte_carlo":
                 if not self.manipulations:

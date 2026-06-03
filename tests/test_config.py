@@ -11,6 +11,8 @@ def test_repo_scaffold_exists() -> None:
     assert Path("CHANGELOG.md").exists()
     assert Path("CONTRIBUTING.md").exists()
     assert Path("examples/fairness_model/README.md").exists()
+    assert Path("examples/csv_model/README.md").exists()
+    assert Path("examples/csv_model/econeval.yml").exists()
     assert Path("scripts/precommit_econeval.py").exists()
 
 
@@ -68,3 +70,51 @@ def test_load_config_reads_drift_example_file() -> None:
     assert config.drift_tests[1].time_column == "period"
     assert config.drift_tests[2].mode == "regression"
     assert config.drift_tests[3].statistic == "psi"
+
+
+def test_load_config_reads_csv_example_file() -> None:
+    config = load_config("examples/csv_model/econeval.yml")
+
+    assert config.project == "csv-model"
+    assert len(config.stress_tests) == 1
+    relation = config.stress_tests[0]
+    assert relation.kind == "relation"
+    assert relation.input_dataset == "data/input.csv"
+    assert relation.output_dataset == "data/output.csv"
+    assert relation.join_key == "id"
+    assert relation.expression == "output.revenue == input.price * input.quantity"
+
+
+def test_load_config_reads_relation_example_file(tmp_path: Path) -> None:
+    config_file = tmp_path / "econeval.yml"
+    input_csv = tmp_path / "input.csv"
+    output_csv = tmp_path / "output.csv"
+
+    input_csv.write_text("id,price,quantity\n1,2,3\n2,4,5\n", encoding="utf-8")
+    output_csv.write_text("id,revenue\n1,6\n2,20\n", encoding="utf-8")
+    config_file.write_text(
+        "\n".join(
+            [
+                "project: csv-model",
+                "version: 1",
+                "stress_tests:",
+                "  - name: revenue_matches_input",
+                "    kind: relation",
+                "    input_dataset: input.csv",
+                "    output_dataset: output.csv",
+                "    join_key: id",
+                "    expression: output.revenue == input.price * input.quantity",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_file)
+
+    assert len(config.stress_tests) == 1
+    relation = config.stress_tests[0]
+    assert relation.kind == "relation"
+    assert relation.input_dataset == "input.csv"
+    assert relation.output_dataset == "output.csv"
+    assert relation.join_key == "id"
+    assert relation.expression == "output.revenue == input.price * input.quantity"

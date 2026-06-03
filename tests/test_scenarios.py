@@ -79,6 +79,33 @@ def test_run_stress_test_contains_dataset_errors(tmp_path: Path) -> None:
     assert suite_passed([result]) is False
 
 
+def test_run_stress_test_passes_for_csv_relations(tmp_path: Path) -> None:
+    input_dataset = tmp_path / "input.csv"
+    output_dataset = tmp_path / "output.csv"
+    input_dataset.write_text("id,price,quantity\n1,2,3\n2,4,5\n", encoding="utf-8")
+    output_dataset.write_text("id,revenue\n1,6\n2,20\n", encoding="utf-8")
+
+    model = DemoModel()
+    test = StressTest(
+        name="revenue_matches_input",
+        kind="relation",
+        input_dataset=str(input_dataset),
+        output_dataset=str(output_dataset),
+        join_key="id",
+        expression="output.revenue == input.price * input.quantity",
+    )
+
+    result = run_stress_test(model, test)
+
+    assert result.passed is True
+    assert result.metric == "relation"
+    assert result.input_dataset == str(input_dataset)
+    assert result.output_dataset == str(output_dataset)
+    assert result.join_key == "id"
+    assert result.value == 0.0
+    assert suite_passed([result]) is True
+
+
 def test_run_drift_suite_passes_for_small_shift() -> None:
     root = Path(__file__).resolve().parents[1]
     test = DriftTest(
