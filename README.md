@@ -132,6 +132,13 @@ econeval/
     workflows/
       ci.yml
   action.yml
+  bridges/
+    julia/
+      econeval_bridge.jl
+    r/
+      econeval_bridge.R
+    stata/
+      econeval_bridge.do
   scripts/
     precommit_econeval.py
   examples/
@@ -388,6 +395,16 @@ The practical rule is simple: if a check needs full Python, put that logic in co
 - `--baseline-report` compares a current report against a prior JSON run and highlights regressions, improvements, and new or removed checks.
 - `examples/demo_notebook.ipynb` is a short walkthrough you can open in Jupyter or VS Code.
 - The repository examples are intended to double as a lightweight demo workflow.
+
+## Non-Python Bridges
+
+The first bridge helper is a thin R wrapper in [bridges/r/econeval_bridge.R](bridges/r/econeval_bridge.R).
+
+It shells out to the EconEval CLI, so R users can keep their own model code in R and still run EconEval checks as part of a CI job or local script.
+
+There is also a Stata wrapper in [bridges/stata/econeval_bridge.do](bridges/stata/econeval_bridge.do).
+
+There is also a Julia wrapper in [bridges/julia/econeval_bridge.jl](bridges/julia/econeval_bridge.jl).
 
 ## Roadmap
 
