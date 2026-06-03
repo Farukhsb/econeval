@@ -31,4 +31,3 @@ drift_tests:
 fairness:
   enabled: false
   metrics: []
-

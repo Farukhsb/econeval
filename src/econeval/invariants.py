@@ -301,15 +301,13 @@ def _validate_expression(tree: ast.Expression) -> None:
 
         if isinstance(
             node,
-            (
-                ast.Dict,
-                ast.Set,
-                ast.Lambda,
-                ast.ListComp,
-                ast.SetComp,
-                ast.DictComp,
-                ast.GeneratorExp,
-            ),
+            ast.Dict
+            | ast.Set
+            | ast.Lambda
+            | ast.ListComp
+            | ast.SetComp
+            | ast.DictComp
+            | ast.GeneratorExp,
         ):
             raise ValueError(f"unsupported syntax: {type(node).__name__}")
 
@@ -446,9 +444,9 @@ def _is_numexpr_candidate(expression: str, context: dict[str, Any]) -> bool:
 
 
 def _is_numexpr_value(value: Any) -> bool:
-    if isinstance(value, (bool, int, float, complex)):
+    if isinstance(value, bool | int | float | complex):
         return True
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return all(_is_numexpr_value(item) for item in value)
     return hasattr(value, "__array__")
 
@@ -456,9 +454,9 @@ def _is_numexpr_value(value: Any) -> bool:
 def _as_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float, complex)):
+    if isinstance(value, int | float | complex):
         return bool(value)
-    if isinstance(value, (list, tuple, set, frozenset)):
+    if isinstance(value, list | tuple | set | frozenset):
         return all(_as_bool(item) for item in value)
     if hasattr(value, "all") and callable(value.all):
         return bool(value.all())

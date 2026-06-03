@@ -1060,7 +1060,7 @@ def _solve_result_passed(result: Any) -> bool:
 def _status_passed(value: Any) -> bool:
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return bool(value)
     if isinstance(value, str):
         return value.lower() in _CONVERGED_STATUSES
@@ -1444,7 +1444,7 @@ def _sparkline(values: list[float]) -> str:
 def _to_float(value: Any, field_name: str) -> float:
     if isinstance(value, bool):
         raise ValueError(f"{field_name} must be numeric")
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return float(value)
     if isinstance(value, str):
         return float(value)

@@ -207,7 +207,7 @@ def _summarize_prediction_output(value: Any) -> Any:
             return mean(leaves)
         return value
 
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         leaves = _collect_numeric_values(value)
         if leaves:
             return mean(leaves)
@@ -219,7 +219,7 @@ def _summarize_prediction_output(value: Any) -> Any:
         except Exception:
             pass
 
-    if hasattr(value, "__iter__") and not isinstance(value, (str, bytes, dict)):
+    if hasattr(value, "__iter__") and not isinstance(value, str | bytes | dict):
         leaves = _collect_numeric_values(list(value))
         if leaves:
             return mean(leaves)
@@ -230,14 +230,14 @@ def _summarize_prediction_output(value: Any) -> Any:
 def _collect_numeric_values(value: Any) -> list[float]:
     if isinstance(value, bool):
         return [float(value)]
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return [float(value)]
     if isinstance(value, dict):
         values: list[float] = []
         for item in value.values():
             values.extend(_collect_numeric_values(item))
         return values
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         values: list[float] = []
         for item in value:
             values.extend(_collect_numeric_values(item))
@@ -247,7 +247,7 @@ def _collect_numeric_values(value: Any) -> list[float]:
             return _collect_numeric_values(value.tolist())
         except Exception:
             return []
-    if hasattr(value, "__iter__") and not isinstance(value, (str, bytes)):
+    if hasattr(value, "__iter__") and not isinstance(value, str | bytes):
         values: list[float] = []
         for item in value:
             values.extend(_collect_numeric_values(item))
@@ -258,7 +258,7 @@ def _collect_numeric_values(value: Any) -> list[float]:
 def _to_scalar(value: Any) -> float | None:
     if isinstance(value, bool):
         return float(value)
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return float(value)
     if hasattr(value, "item"):
         try:
