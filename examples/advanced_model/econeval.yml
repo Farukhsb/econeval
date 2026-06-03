@@ -1,0 +1,174 @@
+project: advanced-model
+version: 1
+
+invariants:
+  - name: elasticity_must_be_negative
+    expression: model.elasticity < 0
+
+  - name: coefficients_must_exist
+    expression: len(model.coefficients) > 0
+    backend: asteval
+
+economic_checks:
+  - name: gdp_accounting_identity
+    kind: accounting_identity
+    left_expression: model.gdp
+    right_expression: model.consumption + model.investment + model.government + model.net_exports
+    tolerance: 1e-9
+
+  - name: demand_curve_monotonicity
+    kind: monotonicity
+    method: demand
+    variable: price
+    lower: 1
+    upper: 5
+    steps: 5
+    direction: nonincreasing
+
+  - name: solver_converges
+    kind: convergence
+    method: solve
+    initial_states:
+      - supply: 6.0
+      - supply: 8.0
+      - supply: 10.0
+
+  - name: supply_stays_bounded
+    kind: boundary_condition
+    expression: model.supply
+    lower: 0
+    upper: 20
+    initial_states:
+      - supply: 6.0
+      - supply: 8.0
+      - supply: 10.0
+
+  - name: price_elasticity_scan
+    kind: scan
+    scan_kind: elasticity
+    method: demand
+    input_variable: price
+    output_variable: quantity
+    expected_direction: nonincreasing
+    perturbations:
+      - 0.01
+      - 0.05
+      - 0.1
+
+stress_tests:
+  - name: stagflation_shock
+    dataset: data/stagflation.csv
+    metric: mape
+    threshold: 0.01
+
+  - name: synthetic_shock_response
+    kind: synthetic
+    metric: relative_change
+    threshold: 0.5
+    variable: shock
+    shock_type: multiplier
+    value: 1.5
+
+  - name: policy_parameter_shock
+    kind: parameter_shock
+    metric: invariants
+    threshold: 0.0
+    manipulations:
+      - variable: elasticity
+        action: add
+        value: 0.05
+    invariants:
+      - name: elasticity_stays_negative
+        expression: model.elasticity < 0
+
+  - name: elasticity_monte_carlo
+    kind: monte_carlo
+    metric: invariants
+    threshold: 0.0
+    samples: 20
+    seed: 7
+    percentile_cutoffs:
+      - 5
+      - 50
+      - 95
+    manipulations:
+      - variable: elasticity
+        action: add
+        value: 0.0
+        sigma: 0.02
+        correlation_group: policy
+        correlation: 0.7
+      - variable: policy_score
+        action: add
+        value: 0.0
+        sigma: 0.05
+        correlation_group: policy
+        correlation: 0.7
+    invariants:
+      - name: elasticity_remains_reasonable
+        expression: model.elasticity < 0.5
+
+  - name: policy_grid_sweep
+    kind: grid
+    metric: invariants
+    threshold: 0.5
+    sweep_axes:
+      - variable: supply
+        values:
+          - value: 6.0
+          - value: 8.0
+          - value: 12.0
+      - variable: policy_score
+        values:
+          - value: 0.5
+          - value: 1.0
+          - value: 1.5
+    invariants:
+      - name: supply_stays_reasonable
+        expression: model.supply < 11
+      - name: policy_score_stays_positive
+        expression: model.policy_score > 0
+
+  - name: macro_stagflation
+    kind: synthetic
+    metric: invariants
+    manipulations:
+      - variable: input_data.unemployment_rate
+        action: add
+        value: 0.04
+      - variable: input_data.energy_costs
+        action: multiply
+        value: 1.5
+    invariants:
+      - name: slowdown_flag
+        expression: model.predicted_gdp_growth < 0.01
+
+drift_tests:
+  - name: shock_feature_stability
+    baseline_dataset: data/baseline.csv
+    dataset: data/current.csv
+    feature: shock
+    threshold: 0.05
+    statistic: median
+
+economic_drift_tests:
+  - name: predicted_mean_shift
+    baseline_dataset: data/baseline.csv
+    dataset: data/current.csv
+    output: median_prediction
+    metric: relative_change
+    threshold: 0.02
+
+fairness:
+  enabled: true
+  dataset: data/fairness.csv
+  group_column: group
+  positive_threshold: 1.5
+  actual_threshold: 1.0
+  metrics:
+    - demographic_parity_difference
+    - disparate_impact_ratio
+    - gini
+    - atkinson
+    - equal_opportunity_difference
+    - equalized_odds_difference

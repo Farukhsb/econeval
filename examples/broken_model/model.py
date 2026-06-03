@@ -9,4 +9,3 @@ class BrokenModel:
     def predict(self, features: dict[str, float]) -> float:
         shock = float(features.get("shock", 0.0))
         return 0.5 + shock
-

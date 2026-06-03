@@ -9,4 +9,3 @@ class FairnessModel:
     def predict(self, features: dict[str, float]) -> float:
         signal = float(features.get("signal", 0.0))
         return 1.0 + signal
-

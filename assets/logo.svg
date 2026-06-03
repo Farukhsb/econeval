@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">EconEval logo</title>
+  <desc id="desc">A simple chart and checkmark mark for the EconEval project.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#12304a"/>
+      <stop offset="100%" stop-color="#2c7be5"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a8ffcb"/>
+      <stop offset="100%" stop-color="#58d68d"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <path d="M64 176V80h18v96z" fill="rgba(255,255,255,0.22)"/>
+  <path d="M102 176V56h18v120z" fill="rgba(255,255,255,0.36)"/>
+  <path d="M140 176V96h18v80z" fill="rgba(255,255,255,0.5)"/>
+  <path d="M178 176V72h18v104z" fill="rgba(255,255,255,0.7)"/>
+  <path d="M58 190h140" stroke="rgba(255,255,255,0.55)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M83 148l28 28 66-74" fill="none" stroke="url(#accent)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

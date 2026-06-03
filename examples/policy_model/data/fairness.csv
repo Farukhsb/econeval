@@ -1,0 +1,5 @@
+group,income,policy_shift,actual
+a,20,0.0,1.0
+a,50,0.5,1.5
+b,15,0.0,0.9
+b,70,0.7,1.8

@@ -12,12 +12,19 @@ license = { text = "MIT" }
 authors = [
   { name = "EconEval Contributors" }
 ]
-dependencies = []
+dependencies = [
+  "pydantic>=2.0",
+  "numexpr>=2.14",
+]
 
 [project.optional-dependencies]
 dev = [
+  "pre-commit>=3.7",
   "pytest>=8.0",
   "ruff>=0.5.0",
+]
+stats = [
+  "statsmodels>=0.14",
 ]
 
 [project.scripts]
@@ -28,3 +35,10 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

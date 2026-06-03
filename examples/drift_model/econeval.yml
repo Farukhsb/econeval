@@ -12,6 +12,22 @@ drift_tests:
     feature: shock
     threshold: 0.05
 
+  - name: demand_signal_trend_shift
+    baseline_dataset: data/trend_baseline.csv
+    dataset: data/trend_current.csv
+    feature: shock
+    threshold: 0.02
+    mode: trend
+    time_column: period
+
+  - name: demand_signal_regression_shift
+    baseline_dataset: data/trend_baseline.csv
+    dataset: data/trend_current.csv
+    feature: shock
+    threshold: 0.02
+    mode: regression
+    time_column: period
+
 fairness:
   enabled: false
   metrics: []
