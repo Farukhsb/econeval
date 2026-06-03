@@ -148,6 +148,16 @@ The next useful additions are:
 - more scenario types
 - a GitHub Action that runs the suite on every pull request
 
+## Release Checklist
+
+When you are ready to publish a new version:
+
+1. run the test suite locally
+2. update the package version if needed
+3. tag the release, for example `v0.2.1`
+4. publish the GitHub Release so the release workflow runs
+5. confirm the release artifact uploaded from Actions
+
 ## License
 
 MIT
