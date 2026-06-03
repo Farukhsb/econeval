@@ -177,6 +177,12 @@ def _evaluate_node(node: ast.AST, context: dict[str, Any]) -> Any:
 
 def _validate_expression(tree: ast.Expression) -> None:
     for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            raise ValueError("function calls are not allowed in invariant expressions")
+
+        if isinstance(node, ast.Subscript):
+            raise ValueError("subscript access is not allowed in invariant expressions")
+
         if not isinstance(node, _ALLOWED_NODES + _ALLOWED_BINOPS + _ALLOWED_BOOL_OPS + _ALLOWED_UNARY_OPS + _ALLOWED_COMPARE_OPS):
             raise ValueError(f"unsupported syntax: {type(node).__name__}")
 
@@ -196,12 +202,6 @@ def _validate_expression(tree: ast.Expression) -> None:
 
         if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
             raise ValueError("private attributes are not allowed")
-
-        if isinstance(node, ast.Call):
-            raise ValueError("function calls are not allowed in invariant expressions")
-
-        if isinstance(node, ast.Subscript):
-            raise ValueError("subscript access is not allowed in invariant expressions")
 
         if isinstance(node, (ast.Dict, ast.Set, ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             raise ValueError(f"unsupported syntax: {type(node).__name__}")
