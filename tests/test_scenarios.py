@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from econeval.config import DriftTest, StressTest
 from econeval.scenarios import (
     fairness_suite_passed,
@@ -66,7 +68,7 @@ def test_run_drift_suite_passes_for_small_shift() -> None:
     results = run_drift_suite([test])
 
     assert results[0].passed is True
-    assert results[0].value == 0.01
+    assert results[0].value == pytest.approx(0.01)
     assert drift_suite_passed(results) is True
 
 
