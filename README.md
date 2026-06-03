@@ -4,6 +4,8 @@ EconEval is a small open-source framework for checking economic and policy model
 
 It is built for the kind of code that can look fine at the syntax level and still be wrong in practice. A model can run, pass unit tests, and still break an economic rule, drift off course after a data change, or produce results that no longer make sense under stress. EconEval is meant to catch those problems early, before they reach a report, dashboard, or paper.
 
+Latest release: [`v0.2.1`](https://github.com/Farukhsb/econeval/releases/tag/v0.2.1)
+
 ## What It Does
 
 EconEval currently does three things:
@@ -110,6 +112,8 @@ pip install -e .[dev]
 
 `pytest` and `ruff` are included in the `dev` extra. If you only want the CLI, install the package without the extra.
 
+If you want the published package state, start from the `v0.2.1` release tag or the GitHub release page.
+
 ## How To Use It
 
 Create a config file that lists the checks you want to enforce, then point EconEval at a Python model class.
@@ -139,6 +143,17 @@ Example invariant rule:
 If the expression returns `False`, the invariant fails.
 
 The JSON report includes the project name, a summary count, and the result of each invariant, stress test, drift check, and fairness check.
+
+## Release Flow
+
+Publishing a GitHub Release triggers the release workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml).
+
+That workflow:
+
+- installs the package
+- runs the test suite
+- runs EconEval against the example model
+- uploads a release report artifact
 
 ## Next Step
 
