@@ -419,17 +419,15 @@ def _is_numexpr_candidate(expression: str, context: dict[str, Any]) -> bool:
     for node in ast.walk(tree):
         if isinstance(
             node,
-            (
-                ast.Attribute,
-                ast.Subscript,
-                ast.Dict,
-                ast.Set,
-                ast.Lambda,
-                ast.ListComp,
-                ast.SetComp,
-                ast.DictComp,
-                ast.GeneratorExp,
-            ),
+            ast.Attribute
+            | ast.Subscript
+            | ast.Dict
+            | ast.Set
+            | ast.Lambda
+            | ast.ListComp
+            | ast.SetComp
+            | ast.DictComp
+            | ast.GeneratorExp,
         ):
             return False
 
