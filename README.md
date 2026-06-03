@@ -190,7 +190,7 @@ EconEval parses its YAML-like config format with its own loader, so you do not n
 For a public release install from PyPI:
 
 ```bash
-pip install econeval
+pip install econeval==0.4.0
 ```
 
 If you want the exact release state, install from the tagged GitHub release:
