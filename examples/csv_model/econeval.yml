@@ -1,0 +1,11 @@
+project: csv-model
+version: 1
+
+stress_tests:
+  - name: revenue_matches_input
+    kind: relation
+    input_dataset: data/input.csv
+    output_dataset: data/output.csv
+    join_key: id
+    expression: output.revenue == input.price * input.quantity
+

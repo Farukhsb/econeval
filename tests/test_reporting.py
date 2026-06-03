@@ -56,6 +56,7 @@ def test_build_json_report_counts_scenario_results() -> None:
         ScenarioResult(
             name="stagflation_shock",
             dataset="data/stagflation.csv",
+            kind="synthetic",
             metric="mape",
             threshold=0.1,
             value=0.0,
@@ -341,6 +342,7 @@ def test_write_markdown_report_includes_visual(tmp_path: Path) -> None:
             ScenarioResult(
                 name="broken_shock",
                 dataset="data/stagflation.csv",
+                kind="synthetic",
                 metric="mape",
                 threshold=0.01,
                 value=0.2,
@@ -572,6 +574,7 @@ def test_write_github_step_summary_writes_table(tmp_path: Path) -> None:
             ScenarioResult(
                 name="elasticity_monte_carlo",
                 dataset="",
+                kind="monte_carlo",
                 metric="invariants",
                 threshold=0.0,
                 value=0.0,

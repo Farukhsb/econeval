@@ -57,8 +57,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        required=True,
-        help="Path to the Python file that defines the model.",
+        help=(
+            "Path to the Python file that defines the model. Omit it for "
+            "model-less CSV relation checks."
+        ),
     )
     parser.add_argument(
         "--class",
@@ -148,6 +150,16 @@ def _placeholder_config() -> EconEvalConfig:
     return EconEvalConfig(project="unavailable")
 
 
+def _config_requires_model(config: EconEvalConfig) -> bool:
+    return bool(
+        config.invariants
+        or config.economic_checks
+        or config.economic_drift_tests
+        or config.fairness.enabled
+        or any(test.kind != "relation" for test in config.stress_tests)
+    )
+
+
 def _run_checks_once(args: argparse.Namespace, log: Logger) -> tuple[dict[str, Any], int]:
     issues: list[ExecutionIssue] = []
     config = None
@@ -168,30 +180,66 @@ def _run_checks_once(args: argparse.Namespace, log: Logger) -> tuple[dict[str, A
         _print_failure("config load", exc, args.quiet)
         return report, 1
 
-    try:
-        log("loading model")
-        model_class = load_model_class(args.model, args.class_name)
-        model = model_class()
-    except Exception as exc:
-        issues.append(ExecutionIssue(stage="model", message=str(exc), detail=str(args.model)))
-        report = build_json_report(
-            config=config,
-            results=[],
-            scenario_results=[],
-            drift_results=[],
-            fairness_results=[],
-            issues=issues,
-        )
-        _print_failure("model load", exc, args.quiet)
-        return report, 1
+    model = None
+    requires_model = _config_requires_model(config)
+    if requires_model:
+        if not args.model:
+            exc = ValueError("this config requires --model because it includes model-based checks")
+            issues.append(ExecutionIssue(stage="model", message=str(exc), detail="--model"))
+            report = build_json_report(
+                config=config,
+                results=[],
+                scenario_results=[],
+                drift_results=[],
+                fairness_results=[],
+                issues=issues,
+            )
+            _print_failure("model load", exc, args.quiet)
+            return report, 1
+
+        try:
+            log("loading model")
+            model_class = load_model_class(args.model, args.class_name)
+            model = model_class()
+        except Exception as exc:
+            issues.append(ExecutionIssue(stage="model", message=str(exc), detail=str(args.model)))
+            report = build_json_report(
+                config=config,
+                results=[],
+                scenario_results=[],
+                drift_results=[],
+                fairness_results=[],
+                issues=issues,
+            )
+            _print_failure("model load", exc, args.quiet)
+            return report, 1
+    elif args.model:
+        try:
+            log("loading model")
+            model_class = load_model_class(args.model, args.class_name)
+            model = model_class()
+        except Exception as exc:
+            issues.append(ExecutionIssue(stage="model", message=str(exc), detail=str(args.model)))
+            report = build_json_report(
+                config=config,
+                results=[],
+                scenario_results=[],
+                drift_results=[],
+                fairness_results=[],
+                issues=issues,
+            )
+            _print_failure("model load", exc, args.quiet)
+            return report, 1
 
     log("running invariants")
     started_at = perf_counter()
-    results = run_invariant_suite(model, config.invariants)
+    results = run_invariant_suite(model, config.invariants) if model is not None else []
     _log_stage_summary(log, "invariants", results, perf_counter() - started_at)
     log("running economic checks")
     started_at = perf_counter()
-    economic_results = run_economic_suite(model, config.economic_checks)
+    economic_results = (
+        run_economic_suite(model, config.economic_checks) if model is not None else []
+    )
     _log_stage_summary(log, "economic checks", economic_results, perf_counter() - started_at)
     log("running stress tests")
     started_at = perf_counter()
@@ -305,7 +353,10 @@ def _run_watch_mode(args: argparse.Namespace, log: Logger) -> int:
 
 
 def _watch_paths(args: argparse.Namespace) -> list[Path]:
-    return [Path(args.config).resolve(), Path(args.model).resolve()]
+    paths = [Path(args.config).resolve()]
+    if args.model:
+        paths.append(Path(args.model).resolve())
+    return paths
 
 
 def _snapshot_watch_state(paths: list[Path]) -> dict[Path, tuple[int, int] | None]:

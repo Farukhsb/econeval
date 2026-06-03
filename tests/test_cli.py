@@ -64,6 +64,28 @@ def test_run_cli_writes_report(tmp_path: Path) -> None:
     assert payload["summary"]["status"] == "pass"
 
 
+def test_run_cli_supports_model_less_csv_relations(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    report_path = tmp_path / "csv-report.json"
+    config_path = root / "examples" / "csv_model" / "econeval.yml"
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["project"] == "csv-model"
+    assert payload["summary"]["status"] == "pass"
+    assert payload["stress_tests"][0]["kind"] == "relation"
+    assert payload["stress_tests"][0]["input_dataset"] == "data/input.csv"
+
+
 def test_run_cli_returns_nonzero_for_broken_example(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     report_path = tmp_path / "broken-report.json"

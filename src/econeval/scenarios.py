@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean, median
+from types import SimpleNamespace
 from typing import Any, Protocol, runtime_checkable
 
 from .config import DriftTest, EconomicCheck, EconomicDriftTest, StressManipulation, StressTest
@@ -32,11 +33,15 @@ _CONVERGED_STATUSES = {
 class ScenarioResult:
     name: str
     dataset: str
+    kind: str
     metric: str
     threshold: float
     value: float
     passed: bool
     detail: str | None = None
+    input_dataset: str | None = None
+    output_dataset: str | None = None
+    join_key: str | None = None
     manipulations: list[dict[str, object]] | None = None
     invariants: list[dict[str, object]] | None = None
     samples: int | None = None
@@ -172,6 +177,8 @@ def run_stress_test(
 
     try:
         threshold = test.threshold if test.threshold is not None else 0.0
+        if test.kind == "relation":
+            return _run_relation_stress_test(model, test, threshold, base_path=base_path)
         if test.kind == "monte_carlo":
             result = _run_monte_carlo_stress_test(model, test, threshold)
         elif test.kind == "grid":
@@ -183,6 +190,7 @@ def run_stress_test(
             result = ScenarioResult(
                 name=test.name,
                 dataset=test.dataset or "",
+                kind=test.kind,
                 metric=test.metric,
                 threshold=threshold,
                 value=value,
@@ -195,6 +203,7 @@ def run_stress_test(
             result = ScenarioResult(
                 name=test.name,
                 dataset=test.dataset or "",
+                kind=test.kind,
                 metric=test.metric,
                 threshold=threshold,
                 value=value,
@@ -207,6 +216,7 @@ def run_stress_test(
         return ScenarioResult(
             name=test.name,
             dataset=test.dataset or "",
+            kind=test.kind,
             metric=test.metric,
             threshold=test.threshold if test.threshold is not None else 0.0,
             value=math.inf,
@@ -526,6 +536,76 @@ def _run_dataset_stress_test(
     return _compute_metric(test.metric, actuals, predictions)
 
 
+def _run_relation_stress_test(
+    model: Any,
+    test: StressTest,
+    threshold: float,
+    base_path: str | Path | None = None,
+) -> ScenarioResult:
+    if not test.input_dataset or not test.output_dataset or not test.expression:
+        raise ValueError(
+            "relation stress tests require input_dataset, output_dataset, and expression"
+        )
+
+    input_rows = _load_csv_rows(_resolve_dataset_source(base_path, test.input_dataset))
+    output_rows = _load_csv_rows(_resolve_dataset_source(base_path, test.output_dataset))
+    pairs = _pair_relation_rows(input_rows, output_rows, test.join_key)
+    if not pairs:
+        raise ValueError("relation stress tests require at least one paired row")
+
+    failures = 0
+    last_detail = ""
+    for index, (input_row, output_row) in enumerate(pairs, start=1):
+        context = {
+            "model": model,
+            "input": SimpleNamespace(**input_row),
+            "output": SimpleNamespace(**output_row),
+        }
+        try:
+            value = evaluate_expression(test.expression, context)
+        except Exception as exc:
+            return ScenarioResult(
+                name=test.name,
+                dataset=test.output_dataset,
+                kind="relation",
+                metric="relation",
+                threshold=threshold,
+                value=math.inf,
+                passed=False,
+                detail=f"row={index}, expression={test.expression}",
+                input_dataset=test.input_dataset,
+                output_dataset=test.output_dataset,
+                join_key=test.join_key,
+                error=str(exc),
+                error_type="dataset_or_metric",
+            )
+
+        if not bool(value):
+            failures += 1
+            last_detail = _relation_row_detail(index, input_row, output_row, test.join_key)
+
+    failure_rate = failures / len(pairs)
+    passed = failures == 0
+    detail = f"checked {len(pairs)} row pairs"
+    if not passed:
+        detail = f"{last_detail}, expression={test.expression}"
+
+    return ScenarioResult(
+        name=test.name,
+        dataset=test.output_dataset,
+        kind="relation",
+        metric="relation",
+        threshold=threshold,
+        value=failure_rate,
+        passed=passed,
+        detail=detail,
+        input_dataset=test.input_dataset,
+        output_dataset=test.output_dataset,
+        join_key=test.join_key,
+        visual=_failure_visual(failure_rate, threshold, passed),
+    )
+
+
 def _run_manipulation_stress_test(
     model: Any,
     test: StressTest,
@@ -570,6 +650,7 @@ def _run_manipulation_stress_test(
     return ScenarioResult(
         name=test.name,
         dataset=test.dataset or "",
+        kind=test.kind,
         metric=test.metric,
         threshold=threshold,
         value=float(failures),
@@ -639,6 +720,7 @@ def _run_monte_carlo_stress_test(
     return ScenarioResult(
         name=test.name,
         dataset=test.dataset or "",
+        kind=test.kind,
         metric=test.metric,
         threshold=threshold,
         value=failure_rate,
@@ -727,6 +809,7 @@ def _run_grid_stress_test(
     return ScenarioResult(
         name=test.name,
         dataset=test.dataset or "",
+        kind=test.kind,
         metric=test.metric,
         threshold=threshold,
         value=failure_rate,
@@ -1040,6 +1123,109 @@ def _load_rows(source: DatasetSource) -> list[dict[str, str]]:
         raise ValueError(f"stress test dataset is empty: {path}")
 
     return rows
+
+
+def _load_csv_rows(source: DatasetSource) -> list[dict[str, object]]:
+    if hasattr(source, "to_dict"):
+        rows = source.to_dict(orient="records")
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("dataframe source is empty")
+        if not all(isinstance(row, dict) for row in rows):
+            raise ValueError("dataframe source must produce row mappings")
+        return [_coerce_row(row) for row in rows]
+
+    path = Path(source)
+    if not path.exists():
+        raise FileNotFoundError(f"relation dataset not found: {path}")
+
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+
+    if not rows:
+        raise ValueError(f"relation dataset is empty: {path}")
+
+    return [_coerce_row(row) for row in rows]
+
+
+def _coerce_row(row: dict[str, object]) -> dict[str, object]:
+    return {str(key): _coerce_csv_value(value) for key, value in row.items()}
+
+
+def _coerce_csv_value(value: object) -> object:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if text == "":
+        return ""
+    if text.lower() == "true":
+        return True
+    if text.lower() == "false":
+        return False
+    try:
+        if "." in text:
+            return float(text)
+        return int(text)
+    except ValueError:
+        return text
+
+
+def _pair_relation_rows(
+    input_rows: list[dict[str, object]],
+    output_rows: list[dict[str, object]],
+    join_key: str | None,
+) -> list[tuple[dict[str, object], dict[str, object]]]:
+    if join_key:
+        input_index = _index_rows(input_rows, join_key, "input")
+        output_index = _index_rows(output_rows, join_key, "output")
+        input_keys = set(input_index)
+        output_keys = set(output_index)
+        if input_keys != output_keys:
+            missing_input = sorted(output_keys - input_keys, key=str)
+            missing_output = sorted(input_keys - output_keys, key=str)
+            parts: list[str] = []
+            if missing_input:
+                parts.append(f"missing input keys: {missing_input}")
+            if missing_output:
+                parts.append(f"missing output keys: {missing_output}")
+            suffix = f": {'; '.join(parts)}" if parts else ""
+            raise ValueError("relation datasets must share the same join keys" + suffix)
+        return [(input_index[key], output_index[key]) for key in sorted(input_index, key=str)]
+
+    if len(input_rows) != len(output_rows):
+        raise ValueError(
+            "relation datasets must have the same number of rows when join_key is omitted"
+        )
+    return list(zip(input_rows, output_rows, strict=True))
+
+
+def _index_rows(
+    rows: list[dict[str, object]],
+    join_key: str,
+    label: str,
+) -> dict[object, dict[str, object]]:
+    index: dict[object, dict[str, object]] = {}
+    for row in rows:
+        if join_key not in row:
+            raise ValueError(f"{label} dataset must include a '{join_key}' column")
+        key = row[join_key]
+        if key in index:
+            raise ValueError(f"{label} dataset has duplicate '{join_key}' value: {key!r}")
+        index[key] = row
+    return index
+
+
+def _relation_row_detail(
+    row_number: int,
+    input_row: dict[str, object],
+    output_row: dict[str, object],
+    join_key: str | None,
+) -> str:
+    if join_key and join_key in input_row and join_key in output_row:
+        return f"row={row_number}, {join_key}={input_row[join_key]!r}"
+    return f"row={row_number}"
 
 
 def _resolve_dataset_source(base_path: str | Path | None, dataset: DatasetSource) -> DatasetSource:
