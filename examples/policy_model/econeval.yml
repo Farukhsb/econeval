@@ -1,0 +1,23 @@
+project: policy-model
+version: 1
+
+invariants:
+  - name: policy_score_non_negative
+    expression: model.policy_score >= 0
+
+stress_tests:
+  - name: policy_response
+    dataset: data/fairness.csv
+    metric: mape
+    threshold: 0.25
+
+fairness:
+  enabled: true
+  dataset: data/fairness.csv
+  group_column: group
+  positive_threshold: 1.5
+  actual_threshold: 1.0
+  metrics:
+    - demographic_parity_difference
+    - gini
+    - equal_opportunity_difference

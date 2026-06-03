@@ -37,4 +37,3 @@ jobs:
         with:
           name: econeval-release-report
           path: econeval-release-report.json
-

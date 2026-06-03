@@ -4,27 +4,54 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import sys
 from pathlib import Path
+from time import perf_counter
 
 from .config import load_config
 from .errors import ExecutionIssue
 from .invariants import run_invariant_suite, suite_passed
-from .reporting import build_json_report, write_junit_report, write_json_report
+from .reporting import (
+    build_json_report,
+    write_dashboard_report,
+    write_github_step_summary,
+    write_html_report,
+    write_json_report,
+    write_junit_report,
+    write_markdown_report,
+)
 from .scenarios import (
-    fairness_suite_passed,
     drift_suite_passed,
+    economic_drift_suite_passed,
+    economic_suite_passed,
+    fairness_suite_passed,
     run_drift_suite,
+    run_economic_drift_suite,
+    run_economic_suite,
     run_fairness_checks,
     run_stress_suite,
+)
+from .scenarios import (
     suite_passed as stress_suite_passed,
 )
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="econeval", description="Run EconEval checks against a model.")
-    parser.add_argument("--config", required=True, help="Path to the EconEval YAML config.")
-    parser.add_argument("--model", required=True, help="Path to the Python file that defines the model.")
+    parser = argparse.ArgumentParser(
+        prog="econeval",
+        description="Run EconEval checks against a model.",
+    )
+    parser.add_argument(
+        "--config",
+        required=True,
+        help="Path to the EconEval YAML config.",
+    )
+    parser.add_argument(
+        "--model",
+        required=True,
+        help="Path to the Python file that defines the model.",
+    )
     parser.add_argument(
         "--class",
         dest="class_name",
@@ -38,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=("json", "junit"),
+        choices=("json", "junit", "markdown", "html", "dashboard"),
         default="json",
         help="Report format to write.",
     )
@@ -51,6 +78,8 @@ def load_model_class(model_path: str | Path, class_name: str):
     """Load a model class from a Python file path."""
 
     module_path = Path(model_path).resolve()
+    if not module_path.exists():
+        raise FileNotFoundError(f"model file not found: {module_path}")
     module_name = f"econeval_model_{module_path.stem}"
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:
@@ -63,7 +92,11 @@ def load_model_class(model_path: str | Path, class_name: str):
     try:
         return getattr(module, class_name)
     except AttributeError as exc:
-        raise ValueError(f"class {class_name!r} not found in {module_path}") from exc
+        available_classes = sorted(
+            name for name, value in vars(module).items() if isinstance(value, type)
+        )
+        suffix = f" available classes: {', '.join(available_classes)}" if available_classes else ""
+        raise ValueError(f"class {class_name!r} not found in {module_path}.{suffix}") from exc
 
 
 def run_cli(argv: list[str] | None = None) -> int:
@@ -86,6 +119,7 @@ def run_cli(argv: list[str] | None = None) -> int:
             issues=issues,
         )
         _write_report(args.format, args.report, report)
+        _write_step_summary(report)
         _print_failure("config load", exc, args.quiet)
         return 1
 
@@ -104,39 +138,92 @@ def run_cli(argv: list[str] | None = None) -> int:
             issues=issues,
         )
         _write_report(args.format, args.report, report)
+        _write_step_summary(report)
         _print_failure("model load", exc, args.quiet)
         return 1
 
     log("running invariants")
+    started_at = perf_counter()
     results = run_invariant_suite(model, config.invariants)
+    _log_stage_summary(log, "invariants", results, perf_counter() - started_at)
+    log("running economic checks")
+    started_at = perf_counter()
+    economic_results = run_economic_suite(model, config.economic_checks)
+    _log_stage_summary(log, "economic checks", economic_results, perf_counter() - started_at)
     log("running stress tests")
-    scenario_results = run_stress_suite(model, config.stress_tests, base_path=Path(args.config).parent)
+    started_at = perf_counter()
+    scenario_results = run_stress_suite(
+        model,
+        config.stress_tests,
+        base_path=Path(args.config).parent,
+    )
+    _log_stage_summary(log, "stress tests", scenario_results, perf_counter() - started_at)
     log("running drift checks")
+    started_at = perf_counter()
     drift_results = run_drift_suite(config.drift_tests, base_path=Path(args.config).parent)
+    _log_stage_summary(log, "drift checks", drift_results, perf_counter() - started_at)
+    log("running economic drift checks")
+    started_at = perf_counter()
+    economic_drift_results = run_economic_drift_suite(
+        model,
+        config.economic_drift_tests,
+        base_path=Path(args.config).parent,
+    )
+    _log_stage_summary(
+        log,
+        "economic drift checks",
+        economic_drift_results,
+        perf_counter() - started_at,
+    )
     fairness_results = []
     if config.fairness.enabled and config.fairness.dataset:
         log("running fairness checks")
+        started_at = perf_counter()
         fairness_results = run_fairness_checks(
             model,
             config.fairness.dataset,
             config.fairness.metrics,
             group_column=config.fairness.group_column,
             positive_threshold=config.fairness.positive_threshold,
+            actual_threshold=config.fairness.actual_threshold,
             base_path=Path(args.config).parent,
         )
+        _log_stage_summary(log, "fairness checks", fairness_results, perf_counter() - started_at)
 
-    report = build_json_report(config, results, scenario_results, drift_results, fairness_results)
+    report = build_json_report(
+        config,
+        results,
+        scenario_results,
+        drift_results,
+        fairness_results,
+        economic_results=economic_results,
+        economic_drift_results=economic_drift_results,
+    )
     _write_report(args.format, args.report, report)
+    _write_step_summary(report)
+    log(f"wrote report to {args.report}")
 
     status = report["summary"]["status"]
-    _print_summary(status, report["summary"]["passed"], report["summary"]["total"], args.quiet, args.format)
+    _print_summary(
+        status,
+        report["summary"]["passed"],
+        report["summary"]["total"],
+        args.quiet,
+        args.format,
+    )
 
-    return 0 if (
-        suite_passed(results)
-        and stress_suite_passed(scenario_results)
-        and drift_suite_passed(drift_results)
-        and fairness_suite_passed(fairness_results)
-    ) else 1
+    return (
+        0
+        if (
+            suite_passed(results)
+            and economic_suite_passed(economic_results)
+            and stress_suite_passed(scenario_results)
+            and drift_suite_passed(drift_results)
+            and economic_drift_suite_passed(economic_drift_results)
+            and fairness_suite_passed(fairness_results)
+        )
+        else 1
+    )
 
 
 def _placeholder_config():
@@ -146,10 +233,22 @@ def _placeholder_config():
 
 
 def _write_report(report_format: str, path: str | Path, report: dict[str, object]) -> None:
-    if report_format == "junit":
-        write_junit_report(path, report)
+    writers = {
+        "json": write_json_report,
+        "junit": write_junit_report,
+        "markdown": write_markdown_report,
+        "html": write_html_report,
+        "dashboard": write_dashboard_report,
+    }
+    writers[report_format](path, report)
+
+
+def _write_step_summary(report: dict[str, object]) -> None:
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
         return
-    write_json_report(path, report)
+
+    write_github_step_summary(summary_path, report)
 
 
 def _build_logger(verbose: bool, quiet: bool):
@@ -158,6 +257,15 @@ def _build_logger(verbose: bool, quiet: bool):
     if not verbose:
         return lambda message: None
     return lambda message: print(f"[econeval] {message}")
+
+
+def _log_stage_summary(log, stage: str, results, elapsed: float) -> None:
+    if not results:
+        log(f"{stage}: no checks configured ({elapsed:.2f}s)")
+        return
+    passed = sum(1 for result in results if getattr(result, "passed", False))
+    total = len(results)
+    log(f"{stage}: {passed}/{total} passed ({elapsed:.2f}s)")
 
 
 def _print_summary(status: str, passed: int, total: int, quiet: bool, report_format: str) -> None:

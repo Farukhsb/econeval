@@ -49,31 +49,88 @@ _ALLOWED_COMPARE_OPS = (
     ast.IsNot,
 )
 
+_SAFE_FUNCTIONS = {
+    "abs": abs,
+    "all": all,
+    "any": any,
+    "len": len,
+    "max": max,
+    "min": min,
+    "round": round,
+    "sum": sum,
+}
+
+_NUMEXPR_FUNCTIONS = {
+    "abs",
+    "arccos",
+    "arccosh",
+    "arcsin",
+    "arcsinh",
+    "arctan",
+    "arctan2",
+    "arctanh",
+    "cos",
+    "cosh",
+    "copysign",
+    "exp",
+    "expm1",
+    "fabs",
+    "floor",
+    "fmod",
+    "hypot",
+    "imag",
+    "isfinite",
+    "isinf",
+    "isnan",
+    "log",
+    "log10",
+    "log1p",
+    "maximum",
+    "minimum",
+    "nextafter",
+    "pow",
+    "real",
+    "round",
+    "sign",
+    "signbit",
+    "sin",
+    "sinh",
+    "sqrt",
+    "tan",
+    "tanh",
+    "where",
+}
+
 
 @dataclass(slots=True)
 class InvariantResult:
     name: str
     expression: str
     passed: bool
+    detail: str | None = None
     error: str | None = None
     error_type: str | None = None
-
-
-def check_invariant(name: str, passed: bool) -> dict[str, object]:
-    """Return a normalized invariant payload."""
-
-    return {
-        "name": name,
-        "passed": passed,
-    }
 
 
 def run_invariant(expression: str, context: dict[str, Any]) -> bool:
     """Evaluate a single invariant expression against a context."""
 
-    tree = ast.parse(expression, mode="eval")
-    _validate_expression(tree)
-    return bool(_evaluate_node(tree.body, context))
+    return _as_bool(evaluate_expression(expression, context))
+
+
+def evaluate_expression(
+    expression: str,
+    context: dict[str, Any],
+    backend: str = "auto",
+) -> Any:
+    """Evaluate a restricted expression and return its raw value."""
+
+    selected_backend = _select_backend(expression, context, backend)
+    if selected_backend == "numexpr":
+        return _evaluate_numexpr(expression, context)
+    if selected_backend == "asteval":
+        return _evaluate_asteval(expression, context)
+    return _evaluate_python_ast(expression, context)
 
 
 def run_invariant_suite(model: Any, rules: list[InvariantRule]) -> list[InvariantResult]:
@@ -84,12 +141,30 @@ def run_invariant_suite(model: Any, rules: list[InvariantRule]) -> list[Invarian
 
     for rule in rules:
         try:
-            passed = run_invariant(rule.expression, context)
+            passed = _as_bool(evaluate_expression(rule.expression, context, backend=rule.backend))
             results.append(
                 InvariantResult(
                     name=rule.name,
                     expression=rule.expression,
                     passed=passed,
+                    detail=(
+                        None
+                        if passed
+                        else _format_rule_error(
+                            rule,
+                            "expression evaluated to False",
+                        )
+                    ),
+                )
+            )
+        except SyntaxError as exc:
+            results.append(
+                InvariantResult(
+                    name=rule.name,
+                    expression=rule.expression,
+                    passed=False,
+                    error=_format_rule_error(rule, f"syntax error: {exc.msg}"),
+                    error_type="expression",
                 )
             )
         except ValueError as exc:
@@ -98,7 +173,7 @@ def run_invariant_suite(model: Any, rules: list[InvariantRule]) -> list[Invarian
                     name=rule.name,
                     expression=rule.expression,
                     passed=False,
-                    error=str(exc),
+                    error=_format_rule_error(rule, str(exc)),
                     error_type="expression",
                 )
             )
@@ -108,7 +183,7 @@ def run_invariant_suite(model: Any, rules: list[InvariantRule]) -> list[Invarian
                     name=rule.name,
                     expression=rule.expression,
                     passed=False,
-                    error=str(exc),
+                    error=_format_rule_error(rule, str(exc)),
                     error_type="runtime",
                 )
             )
@@ -118,6 +193,16 @@ def run_invariant_suite(model: Any, rules: list[InvariantRule]) -> list[Invarian
 
 def suite_passed(results: list[InvariantResult]) -> bool:
     return all(result.passed for result in results)
+
+
+def _format_rule_error(rule: InvariantRule, message: str) -> str:
+    return f"{message} [name={rule.name}, backend={rule.backend}, expression={rule.expression}]"
+
+
+def _evaluate_python_ast(expression: str, context: dict[str, Any]) -> Any:
+    tree = ast.parse(expression, mode="eval")
+    _validate_expression(tree)
+    return _evaluate_node(tree.body, context)
 
 
 def _evaluate_node(node: ast.AST, context: dict[str, Any]) -> Any:
@@ -166,6 +251,9 @@ def _evaluate_node(node: ast.AST, context: dict[str, Any]) -> Any:
         right = _evaluate_node(node.right, context)
         return _apply_binop(node.op, left, right)
 
+    if isinstance(node, ast.Call):
+        return _evaluate_call(node, context)
+
     if isinstance(node, ast.List):
         return [_evaluate_node(element, context) for element in node.elts]
 
@@ -177,13 +265,21 @@ def _evaluate_node(node: ast.AST, context: dict[str, Any]) -> Any:
 
 def _validate_expression(tree: ast.Expression) -> None:
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            raise ValueError("function calls are not allowed in invariant expressions")
-
         if isinstance(node, ast.Subscript):
             raise ValueError("subscript access is not allowed in invariant expressions")
 
-        if not isinstance(node, _ALLOWED_NODES + _ALLOWED_BINOPS + _ALLOWED_BOOL_OPS + _ALLOWED_UNARY_OPS + _ALLOWED_COMPARE_OPS):
+        if isinstance(node, ast.Call):
+            _validate_call(node)
+            continue
+
+        if not isinstance(
+            node,
+            _ALLOWED_NODES
+            + _ALLOWED_BINOPS
+            + _ALLOWED_BOOL_OPS
+            + _ALLOWED_UNARY_OPS
+            + _ALLOWED_COMPARE_OPS,
+        ):
             raise ValueError(f"unsupported syntax: {type(node).__name__}")
 
         if isinstance(node, ast.BinOp) and not isinstance(node.op, _ALLOWED_BINOPS):
@@ -203,8 +299,25 @@ def _validate_expression(tree: ast.Expression) -> None:
         if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
             raise ValueError("private attributes are not allowed")
 
-        if isinstance(node, (ast.Dict, ast.Set, ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+        if isinstance(
+            node,
+            ast.Dict
+            | ast.Set
+            | ast.Lambda
+            | ast.ListComp
+            | ast.SetComp
+            | ast.DictComp
+            | ast.GeneratorExp,
+        ):
             raise ValueError(f"unsupported syntax: {type(node).__name__}")
+
+
+def _validate_call(node: ast.Call) -> None:
+    if not isinstance(node.func, ast.Name):
+        raise ValueError("only simple function calls are allowed in invariant expressions")
+
+    if node.func.id not in _SAFE_FUNCTIONS:
+        raise ValueError(f"function {node.func.id!r} is not allowed in invariant expressions")
 
 
 def _compare(operator: ast.cmpop, left: Any, right: Any) -> bool:
@@ -247,3 +360,102 @@ def _apply_binop(operator: ast.operator, left: Any, right: Any) -> Any:
     if isinstance(operator, ast.Pow):
         return left**right
     raise ValueError(f"unsupported binary operator: {type(operator).__name__}")
+
+
+def _evaluate_call(node: ast.Call, context: dict[str, Any]) -> Any:
+    name = _call_name(node)
+    func = _SAFE_FUNCTIONS[name]
+    args = [_evaluate_node(arg, context) for arg in node.args]
+    kwargs = {keyword.arg: _evaluate_node(keyword.value, context) for keyword in node.keywords}
+    return func(*args, **kwargs)
+
+
+def _call_name(node: ast.Call) -> str:
+    if not isinstance(node.func, ast.Name):
+        raise ValueError("only simple function calls are allowed in invariant expressions")
+    return node.func.id
+
+
+def _evaluate_numexpr(expression: str, context: dict[str, Any]) -> Any:
+    try:
+        import numexpr as ne
+    except ImportError:
+        return _evaluate_asteval(expression, context)
+
+    try:
+        return ne.evaluate(expression, local_dict=context)
+    except Exception as exc:
+        raise ValueError(f"numexpr evaluation failed: {exc}") from exc
+
+
+def _evaluate_asteval(expression: str, context: dict[str, Any]) -> Any:
+    try:
+        from asteval import Interpreter
+    except ImportError:
+        return _evaluate_python_ast(expression, context)
+
+    interpreter = Interpreter(symtable={**_SAFE_FUNCTIONS, **context}, minimal=True, use_numpy=True)
+    result = interpreter(expression)
+    if getattr(interpreter, "error", None):
+        message = getattr(interpreter.error[0], "get_error", lambda: str(interpreter.error[0]))()
+        raise ValueError(str(message))
+    return result
+
+
+def _select_backend(expression: str, context: dict[str, Any], backend: str) -> str:
+    if backend != "auto":
+        return backend
+    if _is_numexpr_candidate(expression, context):
+        return "numexpr"
+    return "asteval"
+
+
+def _is_numexpr_candidate(expression: str, context: dict[str, Any]) -> bool:
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        return False
+
+    for node in ast.walk(tree):
+        if isinstance(
+            node,
+            ast.Attribute
+            | ast.Subscript
+            | ast.Dict
+            | ast.Set
+            | ast.Lambda
+            | ast.ListComp
+            | ast.SetComp
+            | ast.DictComp
+            | ast.GeneratorExp,
+        ):
+            return False
+
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return False
+
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name) or node.func.id not in _NUMEXPR_FUNCTIONS:
+                return False
+
+    return all(_is_numexpr_value(value) for value in context.values())
+
+
+def _is_numexpr_value(value: Any) -> bool:
+    if isinstance(value, bool | int | float | complex):
+        return True
+    if isinstance(value, list | tuple):
+        return all(_is_numexpr_value(item) for item in value)
+    return hasattr(value, "__array__")
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float | complex):
+        return bool(value)
+    if isinstance(value, list | tuple | set | frozenset):
+        return all(_as_bool(item) for item in value)
+    if hasattr(value, "all") and callable(value.all):
+        return bool(value.all())
+    return bool(value)

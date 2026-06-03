@@ -5,11 +5,39 @@ invariants:
   - name: elasticity_must_be_negative
     expression: model.elasticity < 0
 
+economic_checks:
+  - name: gdp_accounting_identity
+    kind: accounting_identity
+    left_expression: model.gdp
+    right_expression: model.consumption + model.investment + model.government + model.net_exports
+    tolerance: 1e-9
+
+  - name: demand_curve_monotonicity
+    kind: monotonicity
+    method: demand
+    variable: price
+    lower: 1
+    upper: 5
+    steps: 5
+    direction: nonincreasing
+
+  - name: solver_converges
+    kind: convergence
+    method: solve
+
 stress_tests:
   - name: stagflation_shock
     dataset: data/stagflation.csv
     metric: mape
     threshold: 0.01
+
+  - name: synthetic_shock_response
+    kind: synthetic
+    metric: relative_change
+    threshold: 0.5
+    variable: shock
+    shock_type: multiplier
+    value: 1.5
 
 drift_tests:
   - name: shock_feature_stability

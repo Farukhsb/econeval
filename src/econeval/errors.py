@@ -10,4 +10,3 @@ class ExecutionIssue:
     stage: str
     message: str
     detail: str | None = None
-

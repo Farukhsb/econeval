@@ -1,5 +1,13 @@
 # EconEval
 
+<p align="left">
+  <img src="assets/logo.svg" alt="EconEval logo" width="120" />
+</p>
+
+[![PyPI version](https://img.shields.io/pypi/v/econeval.svg)](https://pypi.org/project/econeval/)
+[![Tests](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml/badge.svg)](https://github.com/Farukhsb/econeval/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-v0.2.1-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.2.1)
+
 EconEval is a small open-source framework for checking economic and policy models in CI.
 
 It is built for the kind of code that can look fine at the syntax level and still be wrong in practice. A model can run, pass unit tests, and still break an economic rule, drift off course after a data change, or produce results that no longer make sense under stress. EconEval is meant to catch those problems early, before they reach a report, dashboard, or paper.
@@ -12,13 +20,29 @@ EconEval currently does three things:
 
 - loads a model check config
 - runs invariant tests against a Python object
-- writes a JSON report that CI can keep or fail on
+- writes JSON, JUnit, Markdown, or HTML reports that CI can keep or fail on
+
+The config layer is validated with Pydantic, and invariant evaluation can route to `numexpr` for vectorized math or a restricted logical evaluator for model-state checks.
 
 That gives you a practical starting point for:
 
 - checking that important economic rules still hold
 - making model assumptions explicit in code
 - failing pull requests when a change breaks a rule you care about
+
+## Who Should Use This
+
+EconEval is a fit for people who need model checks that are closer to policy and economics than generic unit tests.
+
+It is especially useful when the people reviewing a model are not just software engineers, but also domain stakeholders who care about whether the model still makes sense economically.
+
+- academic economists validating research code and replication projects
+- policy analysts checking that a model still respects program rules and constraints
+- quantitative consultants delivering models to clients with auditability requirements
+- teams working on forecasting, scenario analysis, or simulation pipelines
+- researchers who want a lightweight validation layer before a model is published or deployed
+- applied data scientists building models that need economics-aware guardrails
+- analysts who want CI checks they can explain in a report or appendix
 
 ## Why It Exists
 
@@ -61,11 +85,29 @@ stress_tests:
     metric: mape
     threshold: 0.15
 
+  - name: macro_stagflation
+    kind: synthetic
+    metric: invariants
+    manipulations:
+      - variable: input_data.unemployment_rate
+        action: add
+        value: 0.04
+      - variable: input_data.energy_costs
+        action: multiply
+        value: 1.5
+    invariants:
+      - name: slowdown_flag
+        expression: model.predicted_gdp_growth < 0.01
+
 fairness:
   enabled: true
   metrics:
     - demographic_parity_difference
     - disparate_impact_ratio
+    - gini
+    - atkinson
+    - equal_opportunity_difference
+    - equalized_odds_difference
 ```
 
 ## How It Fits Together
@@ -97,6 +139,12 @@ econeval/
       model.py
       econeval.yml
     broken_model/
+      model.py
+      econeval.yml
+    policy_model/
+      model.py
+      econeval.yml
+    advanced_model/
       model.py
       econeval.yml
   src/
@@ -135,12 +183,30 @@ econeval --config examples/basic_model/econeval.yml --model examples/basic_model
 
 If you prefer module execution, `python -m econeval` works the same way.
 
+To write a text report instead:
+
+```bash
+econeval --config examples/advanced_model/econeval.yml --model examples/advanced_model/model.py --class AdvancedModel --report econeval-report.md --format markdown
+econeval --config examples/advanced_model/econeval.yml --model examples/advanced_model/model.py --class AdvancedModel --report econeval-report.html --format html
+```
+
+To run the full advanced example with synthetic shocks, drift checks, fairness metrics, and scan checks:
+
+```bash
+econeval --config examples/advanced_model/econeval.yml --model examples/advanced_model/model.py --class AdvancedModel --report artifacts/advanced-report.md --format markdown
+```
+
 What the current runner expects:
 
 - a model file that defines a class you can import by name
 - a `predict(features)` method for stress tests, drift checks, and fairness checks
 - CSV datasets with an `actual` column for stress tests
 - CSV datasets with the feature or group columns required by the check
+
+If your runtime looks different, use a thin adapter. EconEval now normalizes
+common shapes like callable models, `solve()`-style solver wrappers, and
+PyMC-style posterior predictive samplers so you can bridge external engines
+without rewriting the check pipeline.
 
 Example invariant rule:
 
@@ -151,7 +217,7 @@ Example invariant rule:
 
 If the expression returns `False`, the invariant fails.
 
-The JSON report includes the project name, a summary count, and the result of each invariant, stress test, drift check, and fairness check.
+The JSON report includes the project name, a summary count, and the result of each invariant, economic check, stress test, drift check, economic drift check, and fairness check.
 
 ## Expression Engine
 
@@ -170,8 +236,26 @@ If you need a broader or more standardized expression engine later, the most lik
 
 - `examples/basic_model` shows the happy path with invariants, stress tests, drift checks, and fairness checks.
 - `examples/broken_model` shows a model and dataset that fail the checks.
-- `examples/drift_model` focuses on drift validation.
+- `examples/drift_model` focuses on drift validation, including trend drift over time.
 - `examples/fairness_model` focuses on fairness checks and a simple stress test.
+- `examples/policy_model` is a minimal policy-focused fairness example.
+- `examples/advanced_model` shows accounting identities, monotonicity, convergence, grid sweeps, and synthetic shocks.
+- `examples/advanced_model` also shows synthetic manipulations, economic drift checks, and GitHub-friendly report output.
+- `examples/advanced_model` now includes a native scan check for monotonicity and elasticity-style responses.
+- `examples/demo_notebook.ipynb` is a short walkthrough you can open in Jupyter or VS Code.
+- The repository examples are intended to double as a lightweight demo workflow.
+
+## Roadmap
+
+Planned or likely next steps for the project:
+
+- expand stress testing with parameter shocks and Monte Carlo runs
+- deepen drift detection over time with rolling windows and alerting
+- add fairness and equity checks for policy-relevant models
+- add deeper interop with tools like `pandas`, `statsmodels`, `PyMC`, `GAMS`, and Julia
+- fairness and drift checks already accept pandas-like row data through `to_dict(orient="records")`
+- install `econeval[stats]` if you want the optional `statsmodels`-based drift helper
+- use `--format dashboard` for a richer HTML overview with filtering and collapsible drill-downs
 
 ## Release Flow
 

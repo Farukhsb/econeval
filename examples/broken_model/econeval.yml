@@ -14,4 +14,3 @@ stress_tests:
 fairness:
   enabled: false
   metrics: []
-

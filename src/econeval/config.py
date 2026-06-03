@@ -2,118 +2,268 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-@dataclass(slots=True)
-class InvariantRule:
-    name: str
-    expression: str
+class InvariantRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    expression: str = Field(min_length=1)
+    backend: Literal["auto", "numexpr", "asteval"] = "auto"
 
 
-@dataclass(slots=True)
-class StressTest:
-    name: str
-    dataset: str
-    metric: str
-    threshold: float
+class StressManipulation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    variable: str = Field(min_length=1)
+    action: Literal["add", "multiply", "set"]
+    value: float
+    sigma: float | None = Field(default=None, gt=0)
+    correlation_group: str | None = Field(default=None, min_length=1)
+    correlation: float | None = Field(default=None, ge=-1.0, le=1.0)
 
 
-@dataclass(slots=True)
-class DriftTest:
-    name: str
-    baseline_dataset: str
-    dataset: str
-    feature: str
-    threshold: float
+class StressSweepAxis(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    variable: str = Field(min_length=1)
+    values: list[float] = Field(min_length=1)
 
 
-@dataclass(slots=True)
-class FairnessConfig:
+class StressTest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    metric: str = Field(default="mape", min_length=1)
+    threshold: float | None = None
+    dataset: str | None = None
+    kind: Literal["dataset", "synthetic", "parameter_shock", "monte_carlo", "grid"] = "dataset"
+    variable: str | None = None
+    shock_type: Literal["multiplier", "additive", "absolute"] = "multiplier"
+    value: float | None = None
+    baseline_value: float = 1.0
+    manipulations: list[StressManipulation] = Field(default_factory=list)
+    sweep_axes: list[StressSweepAxis] = Field(default_factory=list)
+    invariants: list[InvariantRule] = Field(default_factory=list)
+    samples: int = Field(default=100, ge=1)
+    seed: int | None = None
+    percentile_cutoffs: list[float] = Field(default_factory=lambda: [10.0, 50.0, 90.0])
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> StressTest:
+        if self.kind == "dataset":
+            if not self.dataset:
+                raise ValueError("dataset stress tests require dataset")
+            if self.threshold is None:
+                raise ValueError("dataset stress tests require threshold")
+            if self.metric.lower() not in {"rmse", "mae", "mape"}:
+                raise ValueError(
+                    "dataset stress test metric must be one of rmse, mae, or mape, "
+                    f"got {self.metric!r}"
+                )
+        else:
+            if self.kind == "monte_carlo":
+                if not self.manipulations:
+                    raise ValueError("monte carlo stress tests require manipulations")
+                if not self.invariants:
+                    raise ValueError("monte carlo stress tests require invariants")
+                if not self.percentile_cutoffs:
+                    raise ValueError("monte carlo stress tests require percentile_cutoffs")
+            elif self.kind == "grid":
+                if not self.sweep_axes:
+                    raise ValueError("grid stress tests require sweep_axes")
+                if not self.invariants:
+                    raise ValueError("grid stress tests require invariants")
+            elif self.manipulations:
+                if not self.invariants:
+                    raise ValueError("manipulation stress tests require invariants")
+            else:
+                if not self.variable:
+                    raise ValueError("synthetic stress tests require variable")
+                if self.value is None:
+                    raise ValueError("synthetic stress tests require value")
+                if self.metric.lower() not in {"delta", "absolute_change", "relative_change"}:
+                    raise ValueError(
+                        "synthetic stress test metric must be delta, absolute_change, "
+                        f"or relative_change, got {self.metric!r}"
+                    )
+        return self
+
+
+class EconomicDriftTest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    baseline_dataset: str = Field(min_length=1)
+    dataset: str = Field(min_length=1)
+    metric: Literal["absolute_change", "relative_change"] = "relative_change"
+    output: Literal["mean_prediction", "median_prediction", "positive_rate"] = "mean_prediction"
+    threshold: float = Field(gt=0)
+    positive_threshold: float = Field(default=0.5, gt=0)
+
+
+class EconomicCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    kind: Literal[
+        "accounting_identity",
+        "monotonicity",
+        "boundary_condition",
+        "convergence",
+        "scan",
+    ]
+    left_expression: str | None = None
+    right_expression: str | None = None
+    expression: str | None = None
+    method: str | None = None
+    variable: str | None = None
+    lower: float | None = None
+    upper: float | None = None
+    initial_states: list[dict[str, Any]] = Field(default_factory=list)
+    steps: int = Field(default=5, ge=2)
+    tolerance: float = Field(default=1e-9, ge=0)
+    direction: Literal[
+        "nonincreasing",
+        "nondecreasing",
+        "strictly_nonincreasing",
+        "strictly_nondecreasing",
+    ] = "nonincreasing"
+    input_variable: str | None = None
+    output_variable: str | None = None
+    scan_kind: Literal["monotonicity", "elasticity"] = "monotonicity"
+    perturbations: list[float] = Field(default_factory=lambda: [0.01, 0.05, 0.1])
+    expected_direction: (
+        Literal[
+            "nonincreasing",
+            "nondecreasing",
+            "strictly_nonincreasing",
+            "strictly_nondecreasing",
+        ]
+        | None
+    ) = None
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> EconomicCheck:
+        if self.kind == "accounting_identity":
+            if not self.left_expression or not self.right_expression:
+                raise ValueError(
+                    "accounting identity checks require left_expression and right_expression"
+                )
+        elif self.kind == "monotonicity":
+            if not self.method or not self.variable:
+                raise ValueError("monotonicity checks require method and variable")
+            if self.lower is None or self.upper is None:
+                raise ValueError("monotonicity checks require lower and upper")
+        elif self.kind == "boundary_condition":
+            if not self.expression:
+                raise ValueError("boundary condition checks require expression")
+            if self.lower is None or self.upper is None:
+                raise ValueError("boundary condition checks require lower and upper")
+        elif self.kind == "convergence":
+            if not self.method:
+                raise ValueError("convergence checks require method")
+        elif self.kind == "scan":
+            if not self.method:
+                raise ValueError("scan checks require method")
+            if not self.input_variable or not self.output_variable:
+                raise ValueError("scan checks require input_variable and output_variable")
+            if self.expected_direction is None:
+                raise ValueError("scan checks require expected_direction")
+            if self.perturbations is None or not self.perturbations:
+                raise ValueError("scan checks require at least one perturbation")
+        if self.kind == "monte_carlo":
+            if any(cutoff < 0 or cutoff > 100 for cutoff in self.percentile_cutoffs):
+                raise ValueError("monte carlo percentile_cutoffs must be between 0 and 100")
+            if any(
+                later <= earlier
+                for earlier, later in zip(
+                    self.percentile_cutoffs, self.percentile_cutoffs[1:], strict=False
+                )
+            ):
+                raise ValueError("monte carlo percentile_cutoffs must be strictly increasing")
+        return self
+
+
+class DriftTest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    baseline_dataset: str = Field(min_length=1)
+    dataset: str = Field(min_length=1)
+    feature: str = Field(min_length=1)
+    threshold: float = Field(gt=0)
+    statistic: Literal["mean", "median"] = "mean"
+    mode: Literal["snapshot", "trend", "regression"] = "snapshot"
+    time_column: str | None = None
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> DriftTest:
+        if self.mode in {"trend", "regression"} and not self.time_column:
+            raise ValueError(f"{self.mode} drift checks require time_column")
+        return self
+
+
+class FairnessConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     enabled: bool = False
-    metrics: list[str] = field(default_factory=list)
+    metrics: list[
+        Literal[
+            "demographic_parity_difference",
+            "disparate_impact_ratio",
+            "gini",
+            "atkinson",
+            "equal_opportunity_difference",
+            "equalized_odds_difference",
+        ]
+    ] = Field(default_factory=list)
     dataset: str | None = None
     group_column: str = "group"
-    positive_threshold: float = 0.5
+    positive_threshold: float = Field(default=0.5, gt=0)
+    actual_threshold: float = Field(default=0.5, gt=0)
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> FairnessConfig:
+        if self.enabled:
+            if not self.dataset:
+                raise ValueError("fairness checks require dataset when enabled")
+            if not self.metrics:
+                raise ValueError("fairness checks require at least one metric when enabled")
+        return self
 
 
-@dataclass(slots=True)
-class EconEvalConfig:
-    project: str
-    version: int = 1
-    invariants: list[InvariantRule] = field(default_factory=list)
-    stress_tests: list[StressTest] = field(default_factory=list)
-    drift_tests: list[DriftTest] = field(default_factory=list)
-    fairness: FairnessConfig = field(default_factory=FairnessConfig)
+class EconEvalConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project: str = Field(min_length=1)
+    version: int = Field(default=1, ge=1)
+    invariants: list[InvariantRule] = Field(default_factory=list)
+    economic_checks: list[EconomicCheck] = Field(default_factory=list)
+    stress_tests: list[StressTest] = Field(default_factory=list)
+    drift_tests: list[DriftTest] = Field(default_factory=list)
+    economic_drift_tests: list[EconomicDriftTest] = Field(default_factory=list)
+    fairness: FairnessConfig = Field(default_factory=FairnessConfig)
 
 
 def load_config(path: str | Path) -> EconEvalConfig:
     """Load an EconEval YAML config from disk.
 
     The parser is intentionally small and only supports the configuration
-    shape used by EconEval. That keeps the dependency footprint low while still
-    giving the project a real config file format.
+    shape used by EconEval. Pydantic validates the resulting object graph so
+    schema mistakes fail before evaluation starts.
     """
 
     data = _parse_yaml_like(Path(path).read_text(encoding="utf-8"))
-    return _config_from_mapping(data)
+    return EconEvalConfig.model_validate(data)
 
 
 def _config_from_mapping(data: dict[str, Any]) -> EconEvalConfig:
-    project = _require_str(data, "project")
-    version = int(data.get("version", 1))
-
-    invariants = [
-        InvariantRule(
-            name=_require_str(item, "name"),
-            expression=_require_str(item, "expression"),
-        )
-        for item in _require_list_of_mappings(data.get("invariants", []), "invariants")
-    ]
-
-    stress_tests = [
-        StressTest(
-            name=_require_str(item, "name"),
-            dataset=_require_str(item, "dataset"),
-            metric=_require_str(item, "metric"),
-            threshold=float(item.get("threshold")),
-        )
-        for item in _require_list_of_mappings(data.get("stress_tests", []), "stress_tests")
-    ]
-
-    drift_tests = [
-        DriftTest(
-            name=_require_str(item, "name"),
-            baseline_dataset=_require_str(item, "baseline_dataset"),
-            dataset=_require_str(item, "dataset"),
-            feature=_require_str(item, "feature"),
-            threshold=float(item.get("threshold")),
-        )
-        for item in _require_list_of_mappings(data.get("drift_tests", []), "drift_tests")
-    ]
-
-    fairness_data = data.get("fairness", {})
-    if not isinstance(fairness_data, dict):
-        raise ValueError("fairness must be a mapping")
-
-    fairness = FairnessConfig(
-        enabled=bool(fairness_data.get("enabled", False)),
-        metrics=_require_list_of_strings(fairness_data.get("metrics", []), "fairness.metrics"),
-        dataset=_optional_str(fairness_data.get("dataset")),
-        group_column=str(fairness_data.get("group_column", "group")),
-        positive_threshold=float(fairness_data.get("positive_threshold", 0.5)),
-    )
-
-    return EconEvalConfig(
-        project=project,
-        version=version,
-        invariants=invariants,
-        stress_tests=stress_tests,
-        drift_tests=drift_tests,
-        fairness=fairness,
-    )
+    return EconEvalConfig.model_validate(data)
 
 
 def _parse_yaml_like(text: str) -> dict[str, Any]:
@@ -129,7 +279,13 @@ def _parse_yaml_like(text: str) -> dict[str, Any]:
 
         if line.endswith(":"):
             key = line[:-1].strip()
-            if key in {"invariants", "stress_tests", "drift_tests"}:
+            if key in {
+                "invariants",
+                "economic_checks",
+                "stress_tests",
+                "drift_tests",
+                "economic_drift_tests",
+            }:
                 items, index = _parse_mapping_list(lines, index + 1)
                 data[key] = items
                 continue
@@ -177,12 +333,123 @@ def _parse_mapping_list(lines: list[str], start_index: int) -> tuple[list[dict[s
         if current is None:
             raise ValueError("list item content found before any item header")
 
+        if stripped.startswith("initial_states:"):
+            nested_items, index = _parse_nested_mapping_list(lines, index + 1, min_indent=6)
+            current["initial_states"] = nested_items
+            continue
+
+        if stripped.startswith("manipulations:"):
+            nested_items, index = _parse_nested_mapping_list(lines, index + 1, min_indent=6)
+            current["manipulations"] = nested_items
+            continue
+
+        if stripped.startswith("sweep_axes:"):
+            nested_items, index = _parse_nested_mapping_list(lines, index + 1, min_indent=6)
+            current["sweep_axes"] = nested_items
+            continue
+
+        if stripped.startswith("invariants:"):
+            nested_items, index = _parse_nested_mapping_list(lines, index + 1, min_indent=6)
+            current["invariants"] = nested_items
+            continue
+
+        if stripped.startswith("perturbations:"):
+            perturbations, index = _parse_nested_scalar_list(lines, index + 1, min_indent=6)
+            current["perturbations"] = perturbations
+            continue
+
+        if stripped.startswith("percentile_cutoffs:"):
+            percentile_cutoffs, index = _parse_nested_scalar_list(lines, index + 1, min_indent=6)
+            current["percentile_cutoffs"] = percentile_cutoffs
+            continue
+
         key, value = _parse_key_value(stripped)
         current[key] = _parse_scalar(value)
         index += 1
 
     if current is not None:
         items.append(current)
+
+    return items, index
+
+
+def _parse_nested_mapping_list(
+    lines: list[str],
+    start_index: int,
+    min_indent: int,
+) -> tuple[list[dict[str, Any]], int]:
+    items: list[dict[str, Any]] = []
+    index = start_index
+    current: dict[str, Any] | None = None
+
+    while index < len(lines):
+        raw = lines[index]
+        stripped = raw.strip()
+
+        if not stripped or stripped.startswith("#"):
+            index += 1
+            continue
+
+        indent = len(raw) - len(raw.lstrip(" "))
+        if indent < min_indent:
+            break
+
+        if stripped.startswith("- "):
+            if current is not None:
+                items.append(current)
+            current = {}
+            remainder = stripped[2:].strip()
+            if remainder:
+                key, value = _parse_key_value(remainder)
+                current[key] = _parse_scalar(value)
+            index += 1
+            continue
+
+        if current is None:
+            raise ValueError("nested list item content found before any item header")
+
+        if stripped.startswith("values:"):
+            value_items, index = _parse_nested_mapping_list(lines, index + 1, min_indent=8)
+            current["values"] = [
+                float(item["value"]) if "value" in item else item for item in value_items
+            ]
+            continue
+
+        key, value = _parse_key_value(stripped)
+        current[key] = _parse_scalar(value)
+        index += 1
+
+    if current is not None:
+        items.append(current)
+
+    return items, index
+
+
+def _parse_nested_scalar_list(
+    lines: list[str],
+    start_index: int,
+    min_indent: int,
+) -> tuple[list[Any], int]:
+    items: list[Any] = []
+    index = start_index
+
+    while index < len(lines):
+        raw = lines[index]
+        stripped = raw.strip()
+
+        if not stripped or stripped.startswith("#"):
+            index += 1
+            continue
+
+        indent = len(raw) - len(raw.lstrip(" "))
+        if indent < min_indent:
+            break
+
+        if not stripped.startswith("- "):
+            raise ValueError("nested scalar list must contain list items")
+
+        items.append(_parse_scalar(stripped[2:].strip()))
+        index += 1
 
     return items, index
 
@@ -248,6 +515,12 @@ def _parse_fairness_block(lines: list[str], start_index: int) -> tuple[dict[str,
         if stripped.startswith("positive_threshold:"):
             _, value = _parse_key_value(stripped)
             fairness["positive_threshold"] = float(_parse_scalar(value))
+            index += 1
+            continue
+
+        if stripped.startswith("actual_threshold:"):
+            _, value = _parse_key_value(stripped)
+            fairness["actual_threshold"] = float(_parse_scalar(value))
             index += 1
             continue
 
@@ -318,3 +591,9 @@ def _optional_str(value: Any) -> str | None:
     if not isinstance(value, str) or not value:
         raise ValueError("value must be a non-empty string when provided")
     return value
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
