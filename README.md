@@ -301,7 +301,7 @@ That keeps the syntax simple for users while avoiding raw `eval()`. It is still 
 
 It explicitly rejects function calls, subscripts, comprehensions, lambdas, dictionaries, sets, and private attributes such as `__class__`.
 
-If you need a broader or more standardized expression engine later, the most likely replacement options are `asteval` or `numexpr`, depending on whether you need general Python-like rules or numeric-only expressions.
+If you need a broader or more standardized expression engine later, the safest direction is still a numeric-only model: keep `numexpr` for vectorized arithmetic and simple comparisons, and reject anything that needs arbitrary Python execution.
 
 ## Examples
 

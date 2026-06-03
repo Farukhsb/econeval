@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from econeval.invariants import run_invariant
+from econeval.invariants import evaluate_expression, run_invariant
 
 
 @dataclass
@@ -23,3 +23,12 @@ def test_run_invariant_rejects_subscripts() -> None:
 def test_run_invariant_rejects_dunder_attribute_chains() -> None:
     with pytest.raises(ValueError):
         run_invariant("model.__class__.__bases__[0].__subclasses__()", {"model": DemoModel()})
+
+
+def test_numexpr_backend_rejects_dangerous_ast() -> None:
+    with pytest.raises(ValueError, match="unsupported syntax: Call"):
+        evaluate_expression(
+            "model.__class__.__bases__[0].__subclasses__()",
+            {"model": DemoModel()},
+            backend="numexpr",
+        )

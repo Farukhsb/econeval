@@ -13,7 +13,7 @@ class InvariantRule(BaseModel):
 
     name: str = Field(min_length=1)
     expression: str = Field(min_length=1)
-    backend: Literal["auto", "numexpr", "asteval"] = "auto"
+    backend: Literal["auto", "numexpr"] = "auto"
 
 
 class StressManipulation(BaseModel):
