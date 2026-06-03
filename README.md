@@ -285,6 +285,11 @@ When you are ready to publish a new version:
 3. tag the release, for example `v0.3.0`
 4. publish the GitHub Release so the release workflow runs
 5. confirm the release artifact uploaded from Actions
+6. confirm the wheel and sdist were published to PyPI
+
+To publish to PyPI through GitHub Actions, enable PyPI trusted publishing for this
+repository and then publish the GitHub Release. The release workflow will build the
+distribution and upload it automatically.
 
 ## License
 
