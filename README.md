@@ -212,6 +212,12 @@ For iterative development, `--watch` reruns the checks when the config or model 
 econeval --watch --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report econeval-report.json
 ```
 
+To compare a current run against a previous JSON report, pass `--baseline-report`:
+
+```bash
+econeval --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report econeval-report.json --baseline-report baseline-report.json
+```
+
 To write a text report instead:
 
 ```bash

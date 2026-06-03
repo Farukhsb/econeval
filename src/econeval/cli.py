@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import sys
 import time
@@ -15,6 +16,7 @@ from .errors import ExecutionIssue
 from .invariants import run_invariant_suite, suite_passed
 from .reporting import (
     build_json_report,
+    build_report_comparison,
     write_dashboard_report,
     write_github_step_summary,
     write_html_report,
@@ -63,6 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--report",
         default="econeval-report.json",
         help="Where to write the JSON report.",
+    )
+    parser.add_argument(
+        "--baseline-report",
+        help="Optional JSON report to compare against the current run.",
     )
     parser.add_argument(
         "--format",
@@ -233,6 +239,29 @@ def _run_checks_once(args, log):
         economic_results=economic_results,
         economic_drift_results=economic_drift_results,
     )
+    if args.baseline_report:
+        try:
+            baseline_report = _load_baseline_report(args.baseline_report)
+            report["comparison"] = build_report_comparison(report, baseline_report)
+        except Exception as exc:
+            issues.append(
+                ExecutionIssue(
+                    stage="baseline_report",
+                    message=str(exc),
+                    detail=str(args.baseline_report),
+                )
+            )
+            report = build_json_report(
+                config,
+                results,
+                scenario_results,
+                drift_results,
+                fairness_results,
+                issues=issues,
+                economic_results=economic_results,
+                economic_drift_results=economic_drift_results,
+            )
+            report["comparison_error"] = str(exc)
     status = (
         0
         if (
@@ -322,6 +351,13 @@ def _write_step_summary(report: dict[str, object]) -> None:
         return
 
     write_github_step_summary(summary_path, report)
+
+
+def _load_baseline_report(path: str | Path) -> dict[str, object]:
+    report_path = Path(path).resolve()
+    if not report_path.exists():
+        raise FileNotFoundError(f"baseline report not found: {report_path}")
+    return json.loads(report_path.read_text(encoding="utf-8"))
 
 
 def _build_logger(verbose: bool, quiet: bool):

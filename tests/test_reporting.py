@@ -5,6 +5,7 @@ from econeval.errors import ExecutionIssue
 from econeval.invariants import InvariantResult
 from econeval.reporting import (
     build_json_report,
+    build_report_comparison,
     write_dashboard_report,
     write_github_step_summary,
     write_html_report,
@@ -233,6 +234,48 @@ def test_build_json_report_includes_issues() -> None:
     assert report["summary"]["failed"] == 1
     assert report["summary"]["status"] == "fail"
     assert report["issues"][0]["stage"] == "config"
+
+
+def test_build_report_comparison_detects_regressions_and_improvements() -> None:
+    current = {
+        "project": "demo-model",
+        "generated_at": "2026-06-03T00:00:00Z",
+        "summary": {"total": 2, "passed": 1, "failed": 1},
+        "invariants": [
+            {"name": "elasticity", "passed": False, "detail": "current fail"},
+        ],
+        "drift_checks": [
+            {"name": "psi_feature", "passed": True, "detail": "current pass"},
+        ],
+        "economic_checks": [],
+        "economic_drift_checks": [],
+        "stress_tests": [],
+        "fairness_checks": [],
+        "issues": [],
+    }
+    baseline = {
+        "project": "demo-model",
+        "generated_at": "2026-05-03T00:00:00Z",
+        "summary": {"total": 2, "passed": 2, "failed": 0},
+        "invariants": [
+            {"name": "elasticity", "passed": True, "detail": "baseline pass"},
+        ],
+        "drift_checks": [
+            {"name": "psi_feature", "passed": False, "detail": "baseline fail"},
+        ],
+        "economic_checks": [],
+        "economic_drift_checks": [],
+        "stress_tests": [],
+        "fairness_checks": [],
+        "issues": [],
+    }
+
+    comparison = build_report_comparison(current, baseline)
+
+    assert comparison["baseline_project"] == "demo-model"
+    assert comparison["summary_delta"] == {"total": 0, "passed": -1, "failed": 1}
+    assert comparison["regressions"][0]["name"] == "elasticity"
+    assert comparison["improvements"][0]["name"] == "psi_feature"
 
 
 def test_build_json_report_has_stable_schema() -> None:
