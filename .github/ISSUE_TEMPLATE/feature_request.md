@@ -16,4 +16,3 @@ What would you like EconEval to do?
 ## Alternatives considered
 
 ## Additional context
-

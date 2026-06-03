@@ -11,9 +11,9 @@ Describe the issue and the behavior you expected.
 
 ## Steps to reproduce
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ## Expected behavior
 
@@ -25,4 +25,3 @@ Describe the issue and the behavior you expected.
 - Python version:
 - EconEval version:
 - Relevant config or command:
-
