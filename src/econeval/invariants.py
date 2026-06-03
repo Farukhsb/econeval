@@ -47,58 +47,6 @@ _ALLOWED_COMPARE_OPS = (
     ast.IsNot,
 )
 
-_SAFE_FUNCTIONS = {
-    "abs": abs,
-    "all": all,
-    "any": any,
-    "len": len,
-    "max": max,
-    "min": min,
-    "round": round,
-    "sum": sum,
-}
-
-_NUMEXPR_FUNCTIONS = {
-    "abs",
-    "arccos",
-    "arccosh",
-    "arcsin",
-    "arcsinh",
-    "arctan",
-    "arctan2",
-    "arctanh",
-    "cos",
-    "cosh",
-    "copysign",
-    "exp",
-    "expm1",
-    "fabs",
-    "floor",
-    "fmod",
-    "hypot",
-    "imag",
-    "isfinite",
-    "isinf",
-    "isnan",
-    "log",
-    "log10",
-    "log1p",
-    "maximum",
-    "minimum",
-    "nextafter",
-    "pow",
-    "real",
-    "round",
-    "sign",
-    "signbit",
-    "sin",
-    "sinh",
-    "sqrt",
-    "tan",
-    "tanh",
-    "where",
-}
-
 
 @dataclass(slots=True)
 class InvariantResult:
@@ -123,12 +71,11 @@ def evaluate_expression(
 ) -> Any:
     """Evaluate a restricted expression and return its raw value."""
 
+    tree = _validate_expression(expression)
     selected_backend = _select_backend(expression, context, backend)
     if selected_backend == "numexpr":
-        return _evaluate_numexpr(expression, context)
-    if selected_backend == "asteval":
-        return _evaluate_asteval(expression, context)
-    return _evaluate_python_ast(expression, context)
+        return _evaluate_numexpr(expression, context, tree)
+    return _evaluate_python_ast(expression, context, tree)
 
 
 def run_invariant_suite(model: Any, rules: list[InvariantRule]) -> list[InvariantResult]:
@@ -193,7 +140,7 @@ def _format_rule_error(rule: InvariantRule, message: str) -> str:
 
 def _describe_failed_expression(rule: InvariantRule, context: dict[str, Any]) -> str:
     try:
-        tree = ast.parse(rule.expression, mode="eval")
+        tree = _validate_expression(rule.expression)
     except SyntaxError:
         return _format_rule_error(rule, "expression evaluated to False")
 
@@ -263,9 +210,16 @@ def _operator_symbol(operator: ast.cmpop) -> str:
     return type(operator).__name__
 
 
-def _evaluate_python_ast(expression: str, context: dict[str, Any]) -> Any:
-    tree = ast.parse(expression, mode="eval")
-    _validate_expression(tree)
+def _evaluate_python_ast(
+    expression: str,
+    context: dict[str, Any],
+    tree: ast.Expression | None = None,
+) -> Any:
+    parsed = tree or _validate_expression(expression)
+    return _evaluate_python_ast_tree(parsed, context)
+
+
+def _evaluate_python_ast_tree(tree: ast.Expression, context: dict[str, Any]) -> Any:
     return _evaluate_node(tree.body, context)
 
 
@@ -314,17 +268,11 @@ def _evaluate_node(node: ast.AST, context: dict[str, Any]) -> Any:
         left = _evaluate_node(node.left, context)
         right = _evaluate_node(node.right, context)
         return _apply_binop(node.op, left, right)
-
-    if isinstance(node, ast.List):
-        return [_evaluate_node(element, context) for element in node.elts]
-
-    if isinstance(node, ast.Tuple):
-        return tuple(_evaluate_node(element, context) for element in node.elts)
-
     raise ValueError(f"unsupported expression: {type(node).__name__}")
 
 
-def _validate_expression(tree: ast.Expression) -> None:
+def _validate_expression(expression: str) -> ast.Expression:
+    tree = ast.parse(expression, mode="eval")
     for node in ast.walk(tree):
         if isinstance(node, ast.Subscript):
             raise ValueError("subscript access is not allowed in invariant expressions")
@@ -371,6 +319,8 @@ def _validate_expression(tree: ast.Expression) -> None:
         ):
             raise ValueError(f"unsupported syntax: {type(node).__name__}")
 
+    return tree
+
 
 def _compare(operator: ast.cmpop, left: Any, right: Any) -> bool:
     if isinstance(operator, ast.Eq):
@@ -414,11 +364,15 @@ def _apply_binop(operator: ast.operator, left: Any, right: Any) -> Any:
     raise ValueError(f"unsupported binary operator: {type(operator).__name__}")
 
 
-def _evaluate_numexpr(expression: str, context: dict[str, Any]) -> Any:
+def _evaluate_numexpr(
+    expression: str,
+    context: dict[str, Any],
+    tree: ast.Expression,
+) -> Any:
     try:
         import numexpr as ne
     except ImportError:
-        return _evaluate_asteval(expression, context)
+        return _evaluate_python_ast_tree(tree, context)
 
     try:
         return ne.evaluate(expression, local_dict=context)
@@ -426,55 +380,27 @@ def _evaluate_numexpr(expression: str, context: dict[str, Any]) -> Any:
         raise ValueError(f"numexpr evaluation failed: {exc}") from exc
 
 
-def _evaluate_asteval(expression: str, context: dict[str, Any]) -> Any:
-    try:
-        from asteval import Interpreter
-    except ImportError:
-        return _evaluate_python_ast(expression, context)
-
-    interpreter = Interpreter(symtable={**_SAFE_FUNCTIONS, **context}, minimal=True, use_numpy=True)
-    result = interpreter(expression)
-    if getattr(interpreter, "error", None):
-        message = getattr(interpreter.error[0], "get_error", lambda: str(interpreter.error[0]))()
-        raise ValueError(str(message))
-    return result
-
-
 def _select_backend(expression: str, context: dict[str, Any], backend: str) -> str:
-    if backend != "auto":
+    if backend == "numexpr":
+        if not _is_numexpr_candidate(expression, context):
+            raise ValueError("expression is not compatible with the numexpr backend")
         return backend
+    if backend != "auto":
+        raise ValueError(f"unsupported backend: {backend}")
     if _is_numexpr_candidate(expression, context):
         return "numexpr"
-    return "asteval"
+    return "python"
 
 
 def _is_numexpr_candidate(expression: str, context: dict[str, Any]) -> bool:
     try:
-        tree = ast.parse(expression, mode="eval")
+        tree = _validate_expression(expression)
     except SyntaxError:
         return False
 
     for node in ast.walk(tree):
-        if isinstance(
-            node,
-            ast.Attribute
-            | ast.Subscript
-            | ast.Dict
-            | ast.Set
-            | ast.Lambda
-            | ast.ListComp
-            | ast.SetComp
-            | ast.DictComp
-            | ast.GeneratorExp,
-        ):
-            return False
-
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             return False
-
-        if isinstance(node, ast.Call):
-            if not isinstance(node.func, ast.Name) or node.func.id not in _NUMEXPR_FUNCTIONS:
-                return False
 
     return all(_is_numexpr_value(value) for value in context.values())
 
