@@ -12,7 +12,7 @@ pytest for economic logic.
 [![Python 3.10-3.11](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-v0.5.0-blue.svg)](https://github.com/Farukhsb/econeval/releases/tag/v0.5.0)
 
-EconEval is a small open-source framework for checking economic and policy models in CI.
+EconEval is a small open-source framework for pytest-style checks on economic logic in CI.
 
 It catches problems unit tests often miss: broken rules, drift after data changes, and outputs that stop making economic sense.
 
@@ -30,13 +30,27 @@ The config layer is validated with Pydantic, and invariant evaluation uses a sta
 
 Use it to:
 
-- checking that important economic rules still hold
+- check that important economic rules still hold
 - making model assumptions explicit in code
 - failing pull requests when a change breaks a rule you care about
 
+## Maturity
+
+The invariant engine, CLI, reports, examples, and GitHub Action are usable today.
+
+The broader checks are still evolving:
+
+- stress testing
+- fairness checks
+- drift checks
+- PDF reports
+- non-Python bridges
+
+That split is intentional: the core is meant to be small, auditable, and easy to run in CI.
+
 ## Who Should Use This
 
-EconEval is for people who need checks that are closer to policy and economics than generic unit tests. It is especially useful when reviewers care about whether a model still makes sense economically, not just whether it runs.
+EconEval is for people who want a lightweight, CI-native way to check whether a model still makes economic sense. The core stays close to unit-test style validation; the broader checks are extensions on top of that.
 
 - academic economists validating research code and replication projects
 - policy analysts checking that a model still respects program rules and constraints
@@ -68,6 +82,24 @@ The first usable version of EconEval does three things well:
 3. return a clear pass or fail result that GitHub Actions can use
 
 That is enough to support a real workflow without pretending to solve every validation problem at once.
+
+## 60-Second Demo
+
+Run a passing elasticity check:
+
+```bash
+econeval --config examples/basic_model/econeval.yml --model examples/basic_model/model.py --class DemoModel --report out/pass.json
+```
+
+The rule is `model.elasticity < 0`, and `DemoModel` passes because its elasticity is negative.
+
+Run the same rule against a failing model:
+
+```bash
+econeval --config examples/broken_model/econeval.yml --model examples/broken_model/model.py --class BrokenModel --report out/fail.json
+```
+
+`BrokenModel` fails because its elasticity is positive.
 
 ## Example Config
 
@@ -315,7 +347,9 @@ The action installs the package from the action source, sets up Python, and runs
 
 ## Fairness Checks
 
-Fairness checks expect a tabular dataset with:
+Fairness checks are available, but they are still an extension rather than the core path.
+
+They expect a tabular dataset with:
 
 - a group column, defaulting to `group`
 - one or more feature columns that are passed to `predict(features)`
