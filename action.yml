@@ -1,6 +1,9 @@
 name: EconEval
 description: Run EconEval against a model from a GitHub workflow.
 author: Faruk Abdullahi
+branding:
+  icon: activity
+  color: blue
 
 inputs:
   config:
