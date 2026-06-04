@@ -10,7 +10,13 @@ Releases follow semantic versioning:
 
 ## Unreleased
 
-- No unreleased changes yet. The current work is already in `v0.5.1`.
+- No unreleased changes yet. The current work is already in `v0.5.2`.
+
+## v0.5.2
+
+- Added the Adult-derived tax policy simulator example and CI-friendly sample data.
+- Documented a lightweight tax policy workflow with liability, rate, and monotonicity checks.
+- Updated the examples list so the new scenario is easy to find.
 
 ## v0.5.1
 
