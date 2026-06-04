@@ -13,6 +13,10 @@ def test_repo_scaffold_exists() -> None:
     assert Path("examples/fairness_model/README.md").exists()
     assert Path("examples/csv_model/README.md").exists()
     assert Path("examples/csv_model/econeval.yml").exists()
+    assert Path("examples/tax_policy_simulator/README.md").exists()
+    assert Path("examples/tax_policy_simulator/econeval.yml").exists()
+    assert Path("examples/tax_policy_simulator/model.py").exists()
+    assert Path("examples/tax_policy_simulator/data/sample_income.csv").exists()
     assert Path("scripts/precommit_econeval.py").exists()
 
 
@@ -83,6 +87,19 @@ def test_load_config_reads_csv_example_file() -> None:
     assert relation.output_dataset == "data/output.csv"
     assert relation.join_key == "id"
     assert relation.expression == "output.revenue == input.price * input.quantity"
+
+
+def test_load_config_reads_tax_policy_example_file() -> None:
+    config = load_config("examples/tax_policy_simulator/econeval.yml")
+
+    assert config.project == "tax-policy-simulator"
+    assert len(config.economic_checks) == 3
+    assert len(config.stress_tests) == 1
+    assert config.stress_tests[0].dataset == "data/sample_income.csv"
+    assert config.economic_checks[0].kind == "boundary_condition"
+    assert config.economic_checks[1].kind == "boundary_condition"
+    assert config.economic_checks[2].kind == "monotonicity"
+    assert config.economic_checks[2].method == "tax_liability_at"
 
 
 def test_load_config_reads_relation_example_file(tmp_path: Path) -> None:
