@@ -785,11 +785,12 @@ def _render_dashboard_stat(label: str, value: Any) -> list[str]:
 def _render_html_item(section: str, item: Mapping[str, Any], anchor: str | None = None) -> str:
     card_id = f" id='{escape(anchor)}'" if anchor else ""
     search_terms = _dashboard_search_terms(section, item)
+    status = _item_status(section, item)
+    status_class = f"status-{escape(status)}"
     body = [
         f"<article class='card'{card_id} data-search='{escape(search_terms)}'>",
         f"<h3>{escape(_item_name(section, item))}</h3>",
-        f"<p class='status-{escape(_item_status(section, item))}'>",
-        f"{escape(_item_status(section, item))}</p>",
+        f"<p class='badge {status_class}'><span>{escape(status)}</span></p>",
     ]
     if section == "fairness_checks" and item.get("severity"):
         body.append(
@@ -798,6 +799,16 @@ def _render_html_item(section: str, item: Mapping[str, Any], anchor: str | None 
     state_summary = _render_html_state_summary(section, item)
     if state_summary:
         body.append(state_summary)
+    detail = _failure_details(item)
+    if detail:
+        body.append(f"<p class='detail'><strong>detail:</strong> {escape(detail)}</p>")
+    trace = item.get("trace")
+    if trace:
+        body.append(f"<p class='trace'><strong>trace:</strong> {escape(str(trace))}</p>")
+    blame = item.get("blame")
+    if blame:
+        blame_text = escape(format_blame_entries(blame))
+        body.append(f"<p class='blame'><strong>blame:</strong> {blame_text}</p>")
     if item.get("visual"):
         body.append(f"<p class='visual'><strong>visual:</strong> {escape(str(item['visual']))}</p>")
     body.append("</article>")

@@ -508,6 +508,46 @@ def test_write_html_report_writes_text(tmp_path: Path) -> None:
     assert "section-count" in text
 
 
+def test_write_html_report_includes_summary_cards_and_badges(tmp_path: Path) -> None:
+    report_path = tmp_path / "artifacts" / "econeval-report.html"
+    report = build_json_report(
+        EconEvalConfig(project="demo-model"),
+        [
+            InvariantResult(name="elasticity", expression="model.elasticity < 0", passed=True),
+            InvariantResult(
+                name="supply",
+                expression="model.supply >= 0",
+                passed=False,
+                value=-1.0,
+                trace="model.supply=-1.0 (failed); expected >= 0 (got 0.0); expression value=False",
+                detail="model.supply evaluated to -1.0; expected >= 0",
+            ),
+        ],
+        fairness_results=[
+            FairnessResult(
+                name="disparate_impact_ratio",
+                dataset="data/fairness.csv",
+                metric="disparate_impact_ratio",
+                threshold=0.8,
+                value=0.79,
+                passed=False,
+                severity="warn",
+            )
+        ],
+    )
+
+    write_html_report(report_path, report)
+
+    text = report_path.read_text(encoding="utf-8")
+    assert text.count("class='stat'") >= 4
+    assert "status-pass" in text
+    assert "status-fail" in text
+    assert "status-warn" in text
+    assert "section-count" in text
+    assert "model.supply=-1.0" in text
+    assert "trace" in text.lower()
+
+
 def test_write_html_report_includes_state_summary(tmp_path: Path) -> None:
     report_path = tmp_path / "artifacts" / "econeval-report.html"
     report = build_json_report(

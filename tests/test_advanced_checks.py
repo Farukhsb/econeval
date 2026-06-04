@@ -3,12 +3,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from econeval.config import EconomicCheck, StressTest
+from econeval.config import DriftTest, EconomicCheck, StressTest
 from econeval.invariants import evaluate_expression
 from econeval.scenarios import (
     EconomicCheckResult,
     economic_suite_passed,
     register_economic_check_handler,
+    run_drift_suite,
     run_economic_check,
     run_fairness_checks,
     run_stress_test,
@@ -406,6 +407,59 @@ def test_fairness_checks_support_inequality_metrics(tmp_path: Path) -> None:
 
     assert [result.metric for result in results] == ["gini", "atkinson"]
     assert all(result.passed for result in results)
+
+
+def test_fairness_checks_detect_failure_path(tmp_path: Path) -> None:
+    dataset = tmp_path / "fairness.csv"
+    dataset.write_text(
+        "group,signal,actual\na,2.0,1.0\na,2.0,1.0\nb,0.0,1.0\nb,0.0,1.0\n",
+        encoding="utf-8",
+    )
+
+    class FairnessFailureModel:
+        def predict(self, features: dict[str, float]) -> float:
+            return float(features.get("signal", 0.0))
+
+    model = FairnessFailureModel()
+    results = run_fairness_checks(
+        model,
+        str(dataset),
+        ["disparate_impact_ratio"],
+        group_column="group",
+        positive_threshold=0.5,
+    )
+
+    result = results[0]
+    assert result.passed is False
+    assert result.severity == "fail"
+    assert result.value == 0.0
+
+
+def test_drift_checks_detect_failure_path(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.csv"
+    current = tmp_path / "current.csv"
+    baseline.write_text("shock\n1.0\n2.0\n3.0\n4.0\n", encoding="utf-8")
+    current.write_text("shock\n10.0\n11.0\n12.0\n13.0\n", encoding="utf-8")
+
+    results = run_drift_suite(
+        [
+            DriftTest(
+                name="shock_psi_shift",
+                baseline_dataset="baseline.csv",
+                dataset="current.csv",
+                feature="shock",
+                threshold=0.01,
+                statistic="psi",
+                mode="snapshot",
+            )
+        ],
+        base_path=tmp_path,
+    )
+
+    result = results[0]
+    assert result.passed is False
+    assert result.value > result.threshold
+    assert "baseline=" in result.detail
 
 
 def test_numexpr_backend_handles_vectorized_arrays() -> None:

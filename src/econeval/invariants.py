@@ -48,6 +48,8 @@ _ALLOWED_COMPARE_OPS = (
     ast.IsNot,
 )
 
+_MAX_EXPRESSION_LENGTH = 1500
+
 
 @dataclass(slots=True)
 class InvariantResult:
@@ -333,6 +335,9 @@ def _evaluate_node(node: ast.AST, context: dict[str, Any]) -> Any:
 
 
 def _validate_expression(expression: str) -> ast.Expression:
+    if len(expression) > _MAX_EXPRESSION_LENGTH:
+        raise ValueError(f"expression is too long (max {_MAX_EXPRESSION_LENGTH} characters)")
+
     tree = ast.parse(expression, mode="eval")
     for node in ast.walk(tree):
         if isinstance(node, ast.Subscript):
