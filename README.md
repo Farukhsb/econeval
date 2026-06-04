@@ -37,6 +37,7 @@ Use it to:
 ## Maturity
 
 The invariant engine, CLI, reports, examples, and GitHub Action are usable today.
+The R, Stata, and Julia bridge helpers are also available for teams that want to call the CLI from other ecosystems.
 
 The broader checks are still evolving:
 
@@ -44,7 +45,6 @@ The broader checks are still evolving:
 - fairness checks
 - drift checks
 - PDF reports
-- non-Python bridges
 
 That split is intentional: the core is meant to be small, auditable, and easy to run in CI.
 
