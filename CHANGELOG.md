@@ -10,7 +10,13 @@ Releases follow semantic versioning:
 
 ## Unreleased
 
-- No unreleased changes yet. The current work is already in `v0.5.0`.
+- No unreleased changes yet. The current work is already in `v0.5.1`.
+
+## v0.5.1
+
+- Added expression-safety coverage, clearer rejection errors, and a max-length guard.
+- Expanded traceability, HTML reporting, drift, fairness, CSV relation-mode, and baseline-comparison tests.
+- Refreshed the roadmap, limitations, and stabilization docs for the current release.
 
 ## v0.5.0
 
