@@ -1,23 +1,19 @@
 # Roadmap
 
-This file lists the next visible improvements for EconEval.
+## Phase 0: Stabilise v0.5.x
 
-## Near Term
+- tighten expression-safety coverage and failure messages
+- harden report rendering, CLI, and release checks
+- keep the shipped feature set stable and boring
 
-- mature drift detection and baseline comparison
-- improve fairness configuration and reporting
-- add more real-world example models
-- keep the CLI, reports, and CI checks stable
+## Phase 1: Usability improvements for v0.6.0
 
-## Later
+- streamline the README quick start and demo flow
+- make HTML and dashboard output easier to scan
+- expand examples for common policy workflows
 
-- richer report viewing
-- more scenario types
-- deeper integrations with common modeling tools
-- optional performance benchmarks for large rule sets
+## Phase 2: Adoption and ecosystem for v0.7.0+
 
-## Not Planned Yet
-
-- heavyweight dashboards
-- PDF export
-- broad framework integration beyond the current CI-native flow
+- deepen interoperability with non-Python runtimes
+- improve traceability and reviewer-facing explanations
+- grow the example set, docs, and ecosystem integrations

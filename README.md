@@ -31,8 +31,8 @@ The config layer is validated with Pydantic, and invariant evaluation uses a sta
 Use it to:
 
 - check that important economic rules still hold
-- making model assumptions explicit in code
-- failing pull requests when a change breaks a rule you care about
+- make model assumptions explicit in code
+- fail pull requests when a change breaks a rule you care about
 
 ## Maturity
 
@@ -82,6 +82,16 @@ The first usable version of EconEval does three things well:
 3. return a clear pass or fail result that GitHub Actions can use
 
 That is enough to support a real workflow without pretending to solve every validation problem at once.
+
+## Limitations
+
+EconEval is intentionally not a full Python sandbox.
+
+- the expression syntax is deliberately restricted
+- the YAML-like parser supports the documented config shape, not every YAML feature
+- fairness, drift, PDF reports, and non-Python bridges are evolving extensions
+
+That keeps the core small and auditable, but it also means EconEval is not meant to replace general-purpose application logic.
 
 ## 60-Second Demo
 

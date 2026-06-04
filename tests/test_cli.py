@@ -142,6 +142,63 @@ def test_run_cli_blame_flag_includes_traceability_metadata(
     assert item["blame"][0]["pull_request"] == 7
 
 
+def test_run_cli_without_blame_omits_traceability_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "econeval.yml"
+    model_path = tmp_path / "model.py"
+    report_path = tmp_path / "econeval-report.json"
+
+    config_path.write_text(
+        "\n".join(
+            [
+                "project: demo-model",
+                "invariants:",
+                "  - name: elasticity_must_be_negative",
+                "    expression: model.elasticity < 0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    model_path.write_text(
+        "\n".join(
+            [
+                "class DemoModel:",
+                "    def __init__(self) -> None:",
+                "        self.elasticity = 0.25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "econeval.invariants.collect_invariant_blame",
+        lambda model, rule: (_ for _ in ()).throw(AssertionError("blame should not run")),
+    )
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--model",
+            str(model_path),
+            "--class",
+            "DemoModel",
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    item = payload["invariants"][0]
+    assert item["passed"] is False
+    assert item["trace"] is not None
+    assert item["blame"] is None
+
+
 def test_run_cli_requires_model_for_model_based_checks(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     report_path = tmp_path / "missing-model-report.json"
@@ -361,6 +418,51 @@ def test_run_cli_supports_model_less_csv_relations(tmp_path: Path) -> None:
     assert payload["stress_tests"][0]["input_dataset"] == "data/input.csv"
 
 
+def test_run_cli_supports_model_less_csv_relations_failure(tmp_path: Path) -> None:
+    config_path = tmp_path / "econeval.yml"
+    data_dir = tmp_path / "data"
+    report_path = tmp_path / "csv-fail-report.json"
+
+    data_dir.mkdir()
+    (data_dir / "input.csv").write_text("id,price,quantity\n1,2,3\n2,4,5\n", encoding="utf-8")
+    (data_dir / "output.csv").write_text("id,revenue\n1,6\n2,19\n", encoding="utf-8")
+    config_path.write_text(
+        "\n".join(
+            [
+                "project: csv-model",
+                "version: 1",
+                "stress_tests:",
+                "  - name: revenue_matches_input",
+                "    kind: relation",
+                "    input_dataset: data/input.csv",
+                "    output_dataset: data/output.csv",
+                "    join_key: id",
+                "    expression: output.revenue == input.price * input.quantity",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == 1
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    item = payload["stress_tests"][0]
+    assert payload["summary"]["status"] == "fail"
+    assert item["passed"] is False
+    assert item["kind"] == "relation"
+    assert "row=2" in item["detail"]
+    assert "expression=output.revenue == input.price * input.quantity" in item["detail"]
+
+
 def test_run_cli_returns_nonzero_for_broken_example(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     report_path = tmp_path / "broken-report.json"
@@ -384,6 +486,97 @@ def test_run_cli_returns_nonzero_for_broken_example(tmp_path: Path) -> None:
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["project"] == "broken-model"
     assert payload["summary"]["status"] == "fail"
+
+
+def test_run_cli_reports_baseline_comparison_regression(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "econeval.yml"
+    good_model_path = tmp_path / "good_model.py"
+    bad_model_path = tmp_path / "bad_model.py"
+    baseline_path = tmp_path / "baseline-report.json"
+    report_path = tmp_path / "current-report.json"
+
+    config_path.write_text(
+        "\n".join(
+            [
+                "project: demo-model",
+                "invariants:",
+                "  - name: elasticity_must_be_negative",
+                "    expression: model.elasticity < 0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    good_model_path.write_text(
+        "\n".join(
+            [
+                "class DemoModel:",
+                "    def __init__(self) -> None:",
+                "        self.elasticity = -0.25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bad_model_path.write_text(
+        "\n".join(
+            [
+                "class DemoModel:",
+                "    def __init__(self) -> None:",
+                "        self.elasticity = 0.25",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "project": "demo-model",
+                "generated_at": "2026-05-03T00:00:00Z",
+                "summary": {"total": 1, "passed": 1, "failed": 0, "status": "pass"},
+                "invariants": [
+                    {
+                        "name": "elasticity_must_be_negative",
+                        "passed": True,
+                        "detail": None,
+                        "error": None,
+                    }
+                ],
+                "economic_checks": [],
+                "economic_drift_checks": [],
+                "stress_tests": [],
+                "drift_checks": [],
+                "fairness_checks": [],
+                "issues": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_cli(
+        [
+            "--config",
+            str(config_path),
+            "--model",
+            str(bad_model_path),
+            "--class",
+            "DemoModel",
+            "--report",
+            str(report_path),
+            "--baseline-report",
+            str(baseline_path),
+        ]
+    )
+
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 1
+    assert payload["summary"]["status"] == "fail"
+    assert payload["comparison"]["baseline_project"] == "demo-model"
+    assert payload["comparison"]["regressions"][0]["name"] == "elasticity_must_be_negative"
 
 
 @pytest.mark.parametrize(
