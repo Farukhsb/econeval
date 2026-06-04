@@ -443,7 +443,7 @@ The practical rule is simple: if a check needs full Python, put that logic in co
 
 The first bridge helper is a thin R wrapper in [bridges/r/econeval_bridge.R](bridges/r/econeval_bridge.R).
 
-It shells out to the EconEval CLI, so R users can keep their own model code in R and still run EconEval checks as part of a CI job or local script.
+It shells out to the EconEval CLI, so R users can keep their model code in R and still run EconEval checks in CI or locally.
 
 There is also a Stata wrapper in [bridges/stata/econeval_bridge.do](bridges/stata/econeval_bridge.do).
 
