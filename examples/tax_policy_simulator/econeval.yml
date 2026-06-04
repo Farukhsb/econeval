@@ -1,0 +1,74 @@
+project: tax-policy-simulator
+version: 1
+
+economic_checks:
+  - name: tax_liability_is_non_negative
+    kind: boundary_condition
+    expression: model.tax_liability
+    lower: 0.0
+    upper: 50000.0
+    initial_states:
+      - age: 90
+        education_num: 9
+        hours_per_week: 40
+        capital_gain: 0.0
+        capital_loss: 4356.0
+        income_bracket: "<=50K"
+      - age: 74
+        education_num: 16
+        hours_per_week: 20
+        capital_gain: 0.0
+        capital_loss: 3683.0
+        income_bracket: ">50K"
+      - age: 54
+        education_num: 15
+        hours_per_week: 60
+        capital_gain: 99999.0
+        capital_loss: 0.0
+        income_bracket: ">50K"
+      - age: 21
+        education_num: 11
+        hours_per_week: 40
+        capital_gain: 0.0
+        capital_loss: 2603.0
+        income_bracket: "<=50K"
+
+  - name: effective_tax_rate_is_bounded
+    kind: boundary_condition
+    expression: model.effective_tax_rate
+    lower: 0.0
+    upper: 1.0
+    initial_states:
+      - age: 90
+        education_num: 9
+        hours_per_week: 40
+        capital_gain: 0.0
+        capital_loss: 4356.0
+        income_bracket: "<=50K"
+      - age: 45
+        education_num: 16
+        hours_per_week: 35
+        capital_gain: 0.0
+        capital_loss: 3004.0
+        income_bracket: ">50K"
+      - age: 52
+        education_num: 13
+        hours_per_week: 50
+        capital_gain: 99999.0
+        capital_loss: 0.0
+        income_bracket: ">50K"
+
+  - name: liability_is_monotonic_in_income
+    kind: monotonicity
+    method: tax_liability_at
+    variable: income
+    lower: 0.0
+    upper: 120000.0
+    steps: 7
+    direction: nondecreasing
+
+stress_tests:
+  - name: sample_income_predictions
+    dataset: data/sample_income.csv
+    metric: mae
+    threshold: 0.01

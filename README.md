@@ -444,6 +444,7 @@ The practical rule is simple: if a check needs full Python, put that logic in co
 - `examples/drift_model` focuses on drift validation, including PSI, trend drift, and regression drift over time.
 - `examples/fairness_model` focuses on fairness checks and a simple stress test.
 - `examples/policy_model` is a compact policy example with fairness, invariants, and a monotonicity check.
+- `examples/tax_policy_simulator` shows a small Adult-derived tax policy model with liability and rate checks.
 - `examples/advanced_model` shows accounting identities, monotonicity, convergence, grid sweeps, synthetic shocks, and GitHub-friendly report output.
 - `--baseline-report` compares a current report against a prior JSON run and highlights regressions, improvements, and new or removed checks.
 - `examples/demo_notebook.ipynb` is a short walkthrough you can open in Jupyter or VS Code.
