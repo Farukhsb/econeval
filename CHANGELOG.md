@@ -10,7 +10,7 @@ Releases follow semantic versioning:
 
 ## Unreleased
 
-- No unreleased changes yet.
+- No unreleased changes yet. The current work is already in `v0.5.0`.
 
 ## v0.5.0
 
